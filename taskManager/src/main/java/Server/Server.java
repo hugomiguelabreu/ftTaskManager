@@ -1,3 +1,6 @@
+package Server;
+
+import Interfaces.Task;
 import io.atomix.catalyst.concurrent.SingleThreadContext;
 import io.atomix.catalyst.concurrent.ThreadContext;
 import io.atomix.catalyst.serializer.Serializer;
@@ -8,9 +11,10 @@ import spread.SpreadMessage;
 
 import java.util.UUID;
 
-public class Main {
+public class Server {
 
     public static void main(String[] args) throws SpreadException {
+        Task tasks = new TaskImpl();
         ThreadContext tc = new SingleThreadContext("srv-%d", new Serializer());
         Spread sp = new Spread("server-" + UUID.randomUUID().toString().split("-")[4], true);
 
