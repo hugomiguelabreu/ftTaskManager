@@ -7,4 +7,5 @@ This fault tolerant task manager is supposed to crawl through webpages and gathe
 This project needs spread communication toolkit in order to work properly.
 
 This toolkit is implemented in the following project:
-[https://github.com/jopereira/ekit.git](https://github.com/jopereira/ekit.git=
+
+[https://github.com/jopereira/ekit.git](https://github.com/jopereira/ekit.git)
