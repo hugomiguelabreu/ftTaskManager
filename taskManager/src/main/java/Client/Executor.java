@@ -26,11 +26,10 @@ public class Executor extends Thread {
         //de tratar pedidos vamos continuar;
         while (!stop){
             String newUrl = tc.getTask();
-            ArrayList<String> newTaks = scrappe(newUrl);
-            for (String k : newTaks) {
+            ArrayList<String> newTasks = scrappe(newUrl);
+            for (String k : newTasks)
                 System.out.println(k);
-                tc.addTask(k);
-            }
+            tc.completeTask(newUrl, newTasks);
         }
     }
 

@@ -10,6 +10,8 @@ import io.atomix.catalyst.transport.Connection;
 import io.atomix.catalyst.transport.Transport;
 import io.atomix.catalyst.transport.netty.NettyTransport;
 
+import java.util.ArrayList;
+
 public class TaskStub implements Task {
 
     private Transport t;
@@ -37,23 +39,48 @@ public class TaskStub implements Task {
     }
 
     @Override
-    public void addTask(String uri) {
-
+    public boolean addTask(String uri) {
+        AddTasksRep result = null;
+        try {
+            result = (AddTasksRep) tc.execute(() ->
+                    c.sendAndReceive(new AddTasksReq(uri))
+            ).join().get();
+        }catch (Exception e){
+            this.connect();
+            return this.addTask(uri);
+        }
+        return result.result;
     }
 
     @Override
-    public void setUncompleted(String uri) {
-
-    }
+    public void setUncompleted(String uri) { }
 
     @Override
-    public void completeTask(String uri) {
-
+    public boolean completeTask(String uri, ArrayList<String> tasks) {
+        CompleteTaskRep result = null;
+        try {
+            result = (CompleteTaskRep) tc.execute(() ->
+                    c.sendAndReceive(new CompleteTaskReq(uri, tasks))
+            ).join().get();
+        }catch (Exception e){
+            this.connect();
+            return this.completeTask(uri, tasks);
+        }
+        return result.response;
     }
 
     @Override
     public String getTask() {
-        return null;
+        GetTaskRep result = null;
+        try {
+            result = (GetTaskRep) tc.execute(() ->
+                    c.sendAndReceive(new GetTaskReq(0))
+            ).join().get();
+        }catch (Exception e){
+            this.connect();
+            return this.getTask();
+        }
+        return result.uri;
     }
 
     private boolean connect(){

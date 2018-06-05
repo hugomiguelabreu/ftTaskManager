@@ -14,8 +14,9 @@ public class TaskImpl implements Task{
     }
 
     @Override
-    public void addTask(String uri){
+    public boolean addTask(String uri){
         tasks.add(uri);
+        return false;
     }
 
     @Override
