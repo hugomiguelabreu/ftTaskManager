@@ -25,6 +25,7 @@ public class Server {
         Task tasks = new TaskImpl();
         Transport t = new NettyTransport();;
         ThreadContext tc = new SingleThreadContext("srv-%d", new Serializer());
+        ThreadContext tcSpread = new SingleThreadContext("srvSpread-%d", new Serializer());
         Spread sp = new Spread("server-" + UUID.randomUUID().toString().split("-")[4], true);
 
         tc.serializer().register(AddTasksReq.class);
@@ -38,6 +39,7 @@ public class Server {
             //Client server;
             t.server().listen(new Address("127.0.0.1", Integer.parseInt(args[0])), conn -> {
                 conn.handler(AddTasksReq.class, (m) -> {
+                    System.out.println(conn.toString());
                     System.out.println("New task");
                     boolean result = tasks.addTask(m.uri);
                     return Futures.completedFuture(new AddTasksRep(result));
@@ -56,6 +58,12 @@ public class Server {
                     boolean result = tasks.completeTask(taskEnded, newTasks);
                     return Futures.completedFuture(new CompleteTaskRep(result));
                 });
+                //Um cliente vai abaixo vamos colocar
+                //a task dele a não completa
+                conn.onClose(connection -> {
+                    System.out.println(connection.toString());
+                    System.out.println("Fechou cli??");
+                });
             });
 
             //Server network;
@@ -69,8 +77,8 @@ public class Server {
                 System.out.println(m.isCausedByJoin());
                 System.out.println(m.isCausedByDisconnect());
             });
-
         });
+
     }
 
 }
