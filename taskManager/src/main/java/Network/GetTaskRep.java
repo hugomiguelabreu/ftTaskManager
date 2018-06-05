@@ -7,25 +7,21 @@ import io.atomix.catalyst.serializer.Serializer;
 
 public class GetTaskRep implements CatalystSerializable{
 
-    public int id;
     public String uri;
 
     public GetTaskRep(){}
 
-    public GetTaskRep(int idParam, String uriParam){
-        id = idParam;
+    public GetTaskRep(String uriParam){
         uri = uriParam;
     }
 
     @Override
     public void writeObject(BufferOutput<?> bufferOutput, Serializer serializer) {
-        bufferOutput.writeInt(id);
         bufferOutput.writeString(uri);
     }
 
     @Override
     public void readObject(BufferInput<?> bufferInput, Serializer serializer) {
-        id = bufferInput.readInt();
         uri = bufferInput.readString();
     }
 }

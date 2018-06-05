@@ -9,25 +9,21 @@ import java.util.ArrayList;
 
 public class AddTasksReq implements CatalystSerializable{
 
-    public int id;
     public String uri;
 
     public AddTasksReq(){}
 
-    public AddTasksReq(int idParam, String uriParam){
-        id = idParam;
+    public AddTasksReq(String uriParam){
         uri = uriParam;
     }
 
     @Override
     public void writeObject(BufferOutput<?> bufferOutput, Serializer serializer) {
-        bufferOutput.writeInt(id);
         bufferOutput.writeString(uri);
     }
 
     @Override
     public void readObject(BufferInput<?> bufferInput, Serializer serializer) {
-        id = bufferInput.readInt();
         uri = bufferInput.readString();
     }
 }
