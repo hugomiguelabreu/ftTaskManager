@@ -36,6 +36,7 @@ public class TaskStub implements Task {
         tc.serializer().register(CompleteTaskRep.class);
         tc.serializer().register(GetTaskReq.class);
         tc.serializer().register(GetTaskRep.class);
+        connect();
     }
 
     @Override
@@ -46,9 +47,13 @@ public class TaskStub implements Task {
                     c.sendAndReceive(new AddTasksReq(uri))
             ).join().get();
         }catch (Exception e){
-            this.connect();
-            return this.addTask(uri);
+            e.printStackTrace();
+            if(connect())
+                return this.addTask(uri);
+            else
+                return false;
         }
+        System.out.println(result.result);
         return result.result;
     }
 
@@ -63,8 +68,11 @@ public class TaskStub implements Task {
                     c.sendAndReceive(new CompleteTaskReq(uri, tasks))
             ).join().get();
         }catch (Exception e){
-            this.connect();
-            return this.completeTask(uri, tasks);
+            e.printStackTrace();
+            if(connect())
+                return this.completeTask(uri, tasks);
+            else
+                return false;
         }
         return result.response;
     }
@@ -77,8 +85,10 @@ public class TaskStub implements Task {
                     c.sendAndReceive(new GetTaskReq(0))
             ).join().get();
         }catch (Exception e){
-            this.connect();
-            return this.getTask();
+            if(connect())
+                return this.getTask();
+            else
+                return null;
         }
         return result.uri;
     }
@@ -91,6 +101,7 @@ public class TaskStub implements Task {
                         t.client().connect(server)
                 ).join().get();
                 currentServer = i;
+                System.out.println("Connected to " + i);
                 return true;
             }
             catch (Exception e){

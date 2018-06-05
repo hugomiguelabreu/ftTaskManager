@@ -31,6 +31,7 @@ public class CompleteTaskReq implements CatalystSerializable{
 
     @Override
     public void readObject(BufferInput<?> bufferInput, Serializer serializer) {
+        tasks = new ArrayList<>();
         uri = bufferInput.readString();
         size = bufferInput.readInt();
         for (int i=0; i<size; i++)

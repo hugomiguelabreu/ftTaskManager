@@ -1,12 +1,7 @@
 package Client;
 
 import Interfaces.Task;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Scanner;
 
 public class Client {
@@ -28,10 +23,15 @@ public class Client {
             switch (selected){
                 case 1:
                     System.out.print("URL:");
-                    ts.addTask(read.nextLine());
+                    boolean result = ts.addTask(read.nextLine());
+                    if(result)
+                        System.out.println("\u001B[32mSuccess\u001B[0m");
+                    else
+                        System.out.println("\u001B[31mError adding new task\u001B[0m");
                     break;
                 case 2:
-                    e.start();
+                    if(!e.isAlive())
+                        e.start();
                     break;
                 case 3:
                     e.finish();

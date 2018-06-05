@@ -26,10 +26,20 @@ public class Executor extends Thread {
         //de tratar pedidos vamos continuar;
         while (!stop){
             String newUrl = tc.getTask();
-            ArrayList<String> newTasks = scrappe(newUrl);
-            for (String k : newTasks)
-                System.out.println(k);
-            tc.completeTask(newUrl, newTasks);
+            if(newUrl != null) {
+                ArrayList<String> newTasks = scrappe(newUrl);
+                for (String k : newTasks)
+                    System.out.println(k);
+                boolean result = tc.completeTask(newUrl, newTasks);
+                System.out.println("Completed: " + result);
+            }else{
+                //Espera por novos trabalhos / Novos servidores
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
         }
     }
 
