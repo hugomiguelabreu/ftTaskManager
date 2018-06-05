@@ -16,16 +16,17 @@ import spread.SpreadException;
 import spread.SpreadMessage;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
 public class Server {
 
     public static void main(String[] args) throws SpreadException {
+        HashMap<String, String> userHandling = new HashMap<>();
         Task tasks = new TaskImpl();
         Transport t = new NettyTransport();;
         ThreadContext tc = new SingleThreadContext("srv-%d", new Serializer());
-        ThreadContext tcSpread = new SingleThreadContext("srvSpread-%d", new Serializer());
         Spread sp = new Spread("server-" + UUID.randomUUID().toString().split("-")[4], true);
 
         tc.serializer().register(AddTasksReq.class);
@@ -48,6 +49,7 @@ public class Server {
                     System.out.println("Get task");
                     String uri = tasks.getTask();
                     System.out.println(uri);
+                    userHandling.put(conn.toString(), uri);
                     return Futures.completedFuture(new GetTaskRep(uri));
                 });
                 conn.handler(CompleteTaskReq.class, (m) -> {
@@ -61,8 +63,10 @@ public class Server {
                 //Um cliente vai abaixo vamos colocar
                 //a task dele a não completa
                 conn.onClose(connection -> {
-                    System.out.println(connection.toString());
-                    System.out.println("Fechou cli??");
+                    String user = connection.toString();
+                    String uri = userHandling.get(user);
+                    tasks.setUncompleted(uri);
+                    System.out.println("Client closed. Task reinserted.");
                 });
             });
 
