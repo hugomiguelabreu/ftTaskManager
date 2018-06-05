@@ -40,9 +40,9 @@ public class Server {
             //Client server;
             t.server().listen(new Address("127.0.0.1", Integer.parseInt(args[0])), conn -> {
                 conn.handler(AddTasksReq.class, (m) -> {
-                    System.out.println(conn.toString());
                     System.out.println("New task");
                     boolean result = tasks.addTask(m.uri);
+                    sp.multicast(createMessage(), m);
                     return Futures.completedFuture(new AddTasksRep(result));
                 });
                 conn.handler(GetTaskReq.class, (m) -> {
@@ -76,13 +76,31 @@ public class Server {
                 System.out.println("CONNECTED TO GROUP");
             });
 
+            //Nova task nos backup
+            sp.handler(AddTasksReq.class, (s, m) -> {
+                System.out.println("NOVA TASK");
+            });
+            //Colocar task no ongoing
+            sp.handler(GetTaskReq.class, (s, m) -> {
+                System.out.println("PREMUTAR PARA EM TRATAMENTO");
+            });
+            //Completar a task
+            sp.handler(CompleteTaskReq.class, (s, m) -> {
+                System.out.println("TASK COMPLETA");
+            });
+
             sp.handler(MembershipInfo.class, (s, m) -> {
-                System.out.println(m.getGroup());
-                System.out.println(m.isCausedByJoin());
-                System.out.println(m.isCausedByDisconnect());
+                System.out.println("ALTERAÇÃO DE MEMBERSHIP");
             });
         });
 
+    }
+
+    private static SpreadMessage createMessage(){
+        SpreadMessage sm = new SpreadMessage();
+        sm.addGroup("CRAWLERS");
+        sm.setFifo();
+        return sm;
     }
 
 }
