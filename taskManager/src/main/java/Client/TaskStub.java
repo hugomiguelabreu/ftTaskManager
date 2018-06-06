@@ -18,13 +18,7 @@ public class TaskStub implements Task {
     private ThreadContext tc;
     private Connection c;
     private int currentServer;
-    private final Address[] addresses = new Address[]{
-            new Address("127.0.0.1:5000"),
-            new Address("127.0.0.1:5001"),
-            new Address("127.0.0.1:5002"),
-            new Address("127.0.0.1:5003"),
-            new Address("127.0.0.1:5004")
-    };
+    private final Address primary = new Address("127.0.0.1:5000");
 
     public TaskStub(){
         currentServer = 0;
@@ -47,7 +41,6 @@ public class TaskStub implements Task {
                     c.sendAndReceive(new AddTasksReq(uri))
             ).join().get();
         }catch (Exception e){
-            e.printStackTrace();
             if(connect())
                 return this.addTask(uri);
             else
@@ -94,18 +87,16 @@ public class TaskStub implements Task {
     }
 
     private boolean connect(){
-        for(int i = currentServer; i<addresses.length; i++){
+        for(int i = 0; i < 10; i++){
             try{
-                Address server = addresses[i];
                 c = tc.execute(() ->
-                        t.client().connect(server)
+                        t.client().connect(primary)
                 ).join().get();
-                currentServer = i;
-                System.out.println("Connected to " + i);
+                System.out.println("Connected to primary server");
                 return true;
             }
             catch (Exception e){
-                System.out.println("Server " +  i + " is down.");
+                System.out.println("Primary server is down, trying again.");
             }
         }
         return false;

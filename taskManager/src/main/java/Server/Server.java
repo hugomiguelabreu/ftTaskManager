@@ -7,23 +7,23 @@ import io.atomix.catalyst.concurrent.SingleThreadContext;
 import io.atomix.catalyst.concurrent.ThreadContext;
 import io.atomix.catalyst.serializer.Serializer;
 import io.atomix.catalyst.transport.Address;
-import io.atomix.catalyst.transport.Connection;
 import io.atomix.catalyst.transport.Transport;
 import io.atomix.catalyst.transport.netty.NettyTransport;
 import pt.haslab.ekit.Spread;
 import spread.MembershipInfo;
 import spread.SpreadException;
+import spread.SpreadGroup;
 import spread.SpreadMessage;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.UUID;
-import java.util.concurrent.ExecutionException;
+import java.util.*;
 
 public class Server {
 
+    static boolean isPrimary = false;
+
     public static void main(String[] args) throws SpreadException {
         HashMap<String, String> userHandling = new HashMap<>();
+        Set<String> membersBeforeMe = new HashSet<>();
         Task tasks = new TaskImpl();
         Transport t = new NettyTransport();;
         ThreadContext tc = new SingleThreadContext("srv-%d", new Serializer());
@@ -37,48 +37,23 @@ public class Server {
         tc.serializer().register(GetTaskRep.class);
 
         tc.execute(() -> {
-            //Client server;
-            t.server().listen(new Address("127.0.0.1", Integer.parseInt(args[0])), conn -> {
-                conn.handler(AddTasksReq.class, (m) -> {
-                    System.out.println("New task");
-                    boolean result = tasks.addTask(m.uri);
-                    sp.multicast(createMessage(), m);
-                    return Futures.completedFuture(new AddTasksRep(result));
-                });
-                conn.handler(GetTaskReq.class, (m) -> {
-                    System.out.println("Get task");
-                    String uri = tasks.getTask();
-                    System.out.println(uri);
-                    userHandling.put(conn.toString(), uri);
-                    return Futures.completedFuture(new GetTaskRep(uri));
-                });
-                conn.handler(CompleteTaskReq.class, (m) -> {
-                    System.out.println("Complete task");
-                    String taskEnded = m.uri;
-                    ArrayList<String> newTasks = m.tasks;
-                    System.out.println(taskEnded);
-                    boolean result = tasks.completeTask(taskEnded, newTasks);
-                    return Futures.completedFuture(new CompleteTaskRep(result));
-                });
-                //Um cliente vai abaixo vamos colocar
-                //a task dele a não completa
-                conn.onClose(connection -> {
-                    String user = connection.toString();
-                    String uri = userHandling.get(user);
-                    tasks.setUncompleted(uri);
-                    System.out.println("Client closed. Task reinserted.");
-                });
-            });
 
             //Server network;
             sp.open().thenRun(() -> {
                 sp.join("CRAWLERS");
-                System.out.println("CONNECTED TO GROUP");
+                System.out.println("\u001B[32mCONNECTED TO GROUP\u001B[0m");
             });
 
-            //Nova task nos backup
+            sp.handler(AddTasksRep.class, (s, m) -> {
+                System.out.println("A SERIO?");
+            });
+
+            //Nova task
             sp.handler(AddTasksReq.class, (s, m) -> {
-                System.out.println("NOVA TASK");
+                if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())){
+                    System.out.println("NOVA TASK");
+                    sp.multicast(createMessage(s.getSender()), new AddTasksRep(true));
+                }
             });
             //Colocar task no ongoing
             sp.handler(GetTaskReq.class, (s, m) -> {
@@ -90,17 +65,64 @@ public class Server {
             });
 
             sp.handler(MembershipInfo.class, (s, m) -> {
-                System.out.println("ALTERAÇÃO DE MEMBERSHIP");
+                if(membersBeforeMe.size() == 0)
+                    for (SpreadGroup sg : m.getMembers())
+                        membersBeforeMe.add(sg.toString());
+                if(m.isCausedByLeave() || m.isCausedByDisconnect())
+                    membersBeforeMe.remove(m.getDisconnected().toString());
+                if(membersBeforeMe.size() == 1 && !isPrimary)
+                    startPrimary(t, 5000, tasks, userHandling, sp);
             });
         });
 
     }
 
-    private static SpreadMessage createMessage(){
+    private static SpreadMessage createMessage(SpreadGroup sg){
         SpreadMessage sm = new SpreadMessage();
-        sm.addGroup("CRAWLERS");
+        if(sg == null)
+            sm.addGroup("CRAWLERS");
+        else
+            sm.addGroup(sg);
         sm.setFifo();
+        sm.setReliable();
         return sm;
+    }
+
+    private static void startPrimary(Transport t, int port, Task tasks, HashMap<String, String> userHandling, Spread sp){
+        //Client server;
+        System.out.println("\u001B[34mINITIALIZING PRIMARY SERVER\u001B[0m");
+        t.server().listen(new Address("127.0.0.1", port), conn -> {
+            conn.handler(AddTasksReq.class, (m) -> {
+                System.out.println("New task");
+                boolean result = tasks.addTask(m.uri);
+                sp.multicast(createMessage(null), m);
+                return Futures.completedFuture(new AddTasksRep(result));
+            });
+            conn.handler(GetTaskReq.class, (m) -> {
+                System.out.println("Get task");
+                String uri = tasks.getTask();
+                System.out.println(uri);
+                userHandling.put(conn.toString(), uri);
+                return Futures.completedFuture(new GetTaskRep(uri));
+            });
+            conn.handler(CompleteTaskReq.class, (m) -> {
+                System.out.println("Complete task");
+                String taskEnded = m.uri;
+                ArrayList<String> newTasks = m.tasks;
+                System.out.println(taskEnded);
+                boolean result = tasks.completeTask(taskEnded, newTasks);
+                return Futures.completedFuture(new CompleteTaskRep(result));
+            });
+            //Um cliente vai abaixo vamos colocar
+            //a task dele a não completa
+            conn.onClose(connection -> {
+                String user = connection.toString();
+                String uri = userHandling.get(user);
+                tasks.setUncompleted(uri);
+                System.out.println("Client closed. Task reinserted.");
+            });
+        });
+        isPrimary = true;
     }
 
 }
