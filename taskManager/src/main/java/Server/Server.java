@@ -65,11 +65,15 @@ public class Server {
             });
 
             sp.handler(MembershipInfo.class, (s, m) -> {
+                //Se o set está vazio é porque estou a iniciar
                 if(membersBeforeMe.size() == 0)
                     for (SpreadGroup sg : m.getMembers())
                         membersBeforeMe.add(sg.toString());
+                //Portanto, alguém saiu, por isso vamos retira-lo do set se
+                //está lá.
                 if(m.isCausedByLeave() || m.isCausedByDisconnect())
                     membersBeforeMe.remove(m.getDisconnected().toString());
+                //Só existo eu no set e não sou primário
                 if(membersBeforeMe.size() == 1 && !isPrimary)
                     startPrimary(t, 5000, tasks, userHandling, sp);
             });
