@@ -58,13 +58,8 @@ public class Server {
                 Set members = acks.get(m.id);
                 members.remove(s.getSender().toString());
                 //Se só falto eu
-                if(members.size() == 1){
-                    switch (m.op) {
-                        case 1:
-                            responses.get(m.id).complete(new AddTasksRep(m.id, true));
-                            break;
-                    }
-                }
+                if(members.size() == 1)
+                    fillResponse(responses, m.id, m.op);
             });
 
             //Nova task
@@ -107,7 +102,14 @@ public class Server {
                     startPrimary(t, 5000, tasks, userHandling, responses, acks, sp, spreadGroups);
             });
         });
+    }
 
+    private static void fillResponse(HashMap<String, CompletableFuture> responses, String id, int op){
+        switch (op) {
+            case 1:
+                responses.get(id).complete(new AddTasksRep(id, true));
+                break;
+        }
     }
 
     private static void startPrimary(Transport t, int port, Task tasks, HashMap<String, String> userHandling,
@@ -139,7 +141,6 @@ public class Server {
                 sp.multicast(sm, m);
 
                 return response;
-                //return Futures.completedFuture(new AddTasksRep(m.id, result));
             });
 
             conn.handler(GetTaskReq.class, (m) -> {
