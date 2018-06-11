@@ -5,27 +5,27 @@ import io.atomix.catalyst.buffer.BufferOutput;
 import io.atomix.catalyst.serializer.CatalystSerializable;
 import io.atomix.catalyst.serializer.Serializer;
 
-public class CompleteTaskRep implements CatalystSerializable {
+public class Ack implements CatalystSerializable {
 
-    public boolean response;
     public String id;
+    public int op;
 
-    public CompleteTaskRep(){}
+    public Ack(){}
 
-    public CompleteTaskRep(String idParam, boolean responseParam){
-        response = responseParam;
+    public Ack(String idParam, int opParam){
         id = idParam;
+        op = opParam;
     }
 
     @Override
     public void writeObject(BufferOutput<?> bufferOutput, Serializer serializer) {
-        bufferOutput.writeBoolean(response);
         bufferOutput.writeString(id);
+        bufferOutput.writeInt(op);
     }
 
     @Override
     public void readObject(BufferInput<?> bufferInput, Serializer serializer) {
-        response = bufferInput.readBoolean();
         id = bufferInput.readString();
+        op = bufferInput.readInt();
     }
 }

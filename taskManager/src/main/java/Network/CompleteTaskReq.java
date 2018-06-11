@@ -9,20 +9,23 @@ import java.util.ArrayList;
 
 public class CompleteTaskReq implements CatalystSerializable{
 
+    public String id;
     public String uri;
     public int size;
     public ArrayList<String> tasks;
 
     public CompleteTaskReq(){}
 
-    public CompleteTaskReq(String uriParam, ArrayList<String> tasksParam){
+    public CompleteTaskReq(String idParam, String uriParam, ArrayList<String> tasksParam){
         uri = uriParam;
         tasks = tasksParam;
         size = tasks.size();
+        id = idParam;
     }
 
     @Override
     public void writeObject(BufferOutput<?> bufferOutput, Serializer serializer) {
+        bufferOutput.writeString(id);
         bufferOutput.writeString(uri);
         bufferOutput.writeInt(size);
         for (String task: tasks)
@@ -31,6 +34,7 @@ public class CompleteTaskReq implements CatalystSerializable{
 
     @Override
     public void readObject(BufferInput<?> bufferInput, Serializer serializer) {
+        id = bufferInput.readString();
         tasks = new ArrayList<>();
         uri = bufferInput.readString();
         size = bufferInput.readInt();

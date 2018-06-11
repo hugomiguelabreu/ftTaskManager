@@ -7,21 +7,21 @@ import io.atomix.catalyst.serializer.Serializer;
 
 public class GetTaskReq implements CatalystSerializable{
 
-    public int id;
+    public String id;
 
     public GetTaskReq(){}
 
-    public GetTaskReq(int idParam){
+    public GetTaskReq(String idParam){
         id = idParam;
     }
 
     @Override
     public void writeObject(BufferOutput<?> bufferOutput, Serializer serializer) {
-        bufferOutput.writeInt(id);
+        bufferOutput.writeString(id);
     }
 
     @Override
     public void readObject(BufferInput<?> bufferInput, Serializer serializer) {
-        id = bufferInput.readInt();
+        id = bufferInput.readString();
     }
 }

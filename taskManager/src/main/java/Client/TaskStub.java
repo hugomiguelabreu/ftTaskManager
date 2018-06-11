@@ -11,6 +11,7 @@ import io.atomix.catalyst.transport.Transport;
 import io.atomix.catalyst.transport.netty.NettyTransport;
 
 import java.util.ArrayList;
+import java.util.UUID;
 
 public class TaskStub implements Task {
 
@@ -19,6 +20,7 @@ public class TaskStub implements Task {
     private Connection c;
     private int currentServer;
     private final Address primary = new Address("127.0.0.1:5000");
+    private String uid;
 
     public TaskStub(){
         currentServer = 0;
@@ -30,15 +32,16 @@ public class TaskStub implements Task {
         tc.serializer().register(CompleteTaskRep.class);
         tc.serializer().register(GetTaskReq.class);
         tc.serializer().register(GetTaskRep.class);
+        generateUUID();
         connect();
     }
 
     @Override
     public boolean addTask(String uri) {
-        AddTasksRep result = null;
+        AddTasksRep result;
         try {
             result = (AddTasksRep) tc.execute(() ->
-                    c.sendAndReceive(new AddTasksReq(uri))
+                    c.sendAndReceive(new AddTasksReq(uid, uri))
             ).join().get();
         }catch (Exception e){
             if(connect())
@@ -46,7 +49,8 @@ public class TaskStub implements Task {
             else
                 return false;
         }
-        System.out.println(result.result);
+
+        generateUUID();
         return result.result;
     }
 
@@ -55,10 +59,10 @@ public class TaskStub implements Task {
 
     @Override
     public boolean completeTask(String uri, ArrayList<String> tasks) {
-        CompleteTaskRep result = null;
+        CompleteTaskRep result;
         try {
             result = (CompleteTaskRep) tc.execute(() ->
-                    c.sendAndReceive(new CompleteTaskReq(uri, tasks))
+                    c.sendAndReceive(new CompleteTaskReq(uid, uri, tasks))
             ).join().get();
         }catch (Exception e){
             e.printStackTrace();
@@ -67,6 +71,8 @@ public class TaskStub implements Task {
             else
                 return false;
         }
+
+        generateUUID();
         return result.response;
     }
 
@@ -75,7 +81,7 @@ public class TaskStub implements Task {
         GetTaskRep result = null;
         try {
             result = (GetTaskRep) tc.execute(() ->
-                    c.sendAndReceive(new GetTaskReq(0))
+                    c.sendAndReceive(new GetTaskReq(uid))
             ).join().get();
         }catch (Exception e){
             if(connect())
@@ -83,7 +89,13 @@ public class TaskStub implements Task {
             else
                 return null;
         }
+
+        generateUUID();
         return result.uri;
+    }
+
+    private void generateUUID(){
+        uid = UUID.randomUUID().toString().split("-")[4];
     }
 
     private boolean connect(){
