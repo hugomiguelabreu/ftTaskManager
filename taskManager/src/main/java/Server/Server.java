@@ -17,6 +17,7 @@ import spread.SpreadMessage;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Server {
 
@@ -37,6 +38,8 @@ public class Server {
         Transport t = new NettyTransport();;
         ThreadContext tc = new SingleThreadContext("srv-%d", new Serializer());
         Spread sp = new Spread("server-" + UUID.randomUUID().toString().split("-")[4], true);
+
+        AtomicReference<String> askedStateTo = new AtomicReference<>("");
 
         tc.serializer().register(AddTasksReq.class);
         tc.serializer().register(AddTasksRep.class);
@@ -125,6 +128,26 @@ public class Server {
                 }
             });
 
+            sp.handler(RecoverReq.class, (s, m) -> {
+                System.out.println("ASKING FOR STATE");
+
+                SpreadMessage sm = new SpreadMessage();
+                sm.addGroup(s.getSender());
+                sm.setFifo();
+                sm.setReliable();
+
+                RecoverRep recRep = new RecoverRep(((TaskImpl) tasks).getTasks(), ((TaskImpl) tasks).getOnGoing(), responses);
+                sp.multicast(sm, recRep);
+            });
+
+            sp.handler(RecoverRep.class, (s, m) -> {
+                askedStateTo.set("");
+                responses.clear();
+                for(String k : m.responses.keySet())
+                    responses.put(k,m.responses.get(k));
+                ((TaskImpl) tasks).setOnGoing(m.onGoing);
+            });
+
             sp.handler(MembershipInfo.class, (s, m) -> {
                 spreadGroups.clear();
                 for (SpreadGroup sg : m.getMembers())
@@ -134,6 +157,20 @@ public class Server {
                 if(membersBeforeMe.size() == 0) {
                     for (SpreadGroup sg : m.getMembers())
                         membersBeforeMe.add(sg.toString());
+                }
+
+                if( (m.isCausedByJoin() && m.getJoined().toString().equals(sp.getPrivateGroup().toString()))
+                        || (m.isCausedByDisconnect() && m.getDisconnected().equals(askedStateTo.get()))) {
+                    for (String g : spreadGroups) {
+                        System.out.println("ASKING FOR STATE");
+                        askedStateTo.set(g);
+                        SpreadMessage sm = new SpreadMessage();
+                        sm.addGroup(g);
+                        sm.setFifo();
+                        sm.setReliable();
+                        sp.multicast(sm, (new RecoverReq()));
+                        break;
+                    }
                 }
 
                 //Portanto, alguém saiu, por isso vamos retira-lo do set se

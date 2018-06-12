@@ -84,13 +84,30 @@ public class TaskImpl implements Task{
         onGoing.remove(uri);
     }
 
-    public void print(){
+    public void print() {
         System.out.print("[");
-        for(String s: tasks)
+        for (String s : tasks)
             System.out.print(s + ", ");
         System.out.print("]\n[");
-        for(String s: onGoing)
+        for (String s : onGoing)
             System.out.print(s + ", ");
         System.out.print("]\n");
+    }
+
+    public ArrayList<String> getTasks() {
+        return tasks;
+    }
+
+    public ArrayList<String> getOnGoing() {
+        return onGoing;
+    }
+
+    public void setTasks(ArrayList<String> tasks) {
+        this.tasks = tasks;
+    }
+
+    public void setOnGoing(ArrayList<String> onGoing) {
+        this.onGoing = onGoing;
+
     }
 }
