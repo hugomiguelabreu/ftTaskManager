@@ -2,7 +2,7 @@ package Server;
 
 import Interfaces.Task;
 import Network.*;
-import Network.Spread.Ack;
+import Network.Spread.*;
 import io.atomix.catalyst.concurrent.Futures;
 import io.atomix.catalyst.concurrent.SingleThreadContext;
 import io.atomix.catalyst.concurrent.ThreadContext;
@@ -68,10 +68,9 @@ public class Server {
             });
 
             //Nova task
-            sp.handler(AddTasksReq.class, (s, m) -> {
+            sp.handler(AddTasksSpreadReq.class, (s, m) -> {
                 if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())){
                     System.out.println("NOVA TASK");
-                    System.exit(1);
                     SpreadMessage sm = new SpreadMessage();
                     sm.addGroup(s.getSender());
                     sm.setFifo();
@@ -81,12 +80,16 @@ public class Server {
             });
 
             //Colocar task no ongoing
-            sp.handler(GetTaskReq.class, (s, m) -> {
+            sp.handler(GetTaskSpreadReq.class, (s, m) -> {
                 System.out.println("PREMUTAR PARA EM TRATAMENTO");
             });
 
             //Completar a task
-            sp.handler(CompleteTaskReq.class, (s, m) -> {
+            sp.handler(CompleteTaskSpreadReq.class, (s, m) -> {
+                System.out.println("TASK COMPLETA");
+            });
+
+            sp.handler(UncompleteTaskSpreadReq.class, (s, m) -> {
                 System.out.println("TASK COMPLETA");
             });
 
@@ -130,6 +133,7 @@ public class Server {
         t.server().listen(new Address("127.0.0.1", port), conn -> {
 
             conn.handler(AddTasksReq.class, (m) -> {
+                System.out.println(conn.toString());
                 if(responses.containsKey(m.id))
                     return responses.get(m.id).getValue();
                 //Processa o pedido
