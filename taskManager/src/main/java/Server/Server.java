@@ -26,7 +26,7 @@ public class Server {
         //Mapa de conexões para saber que uri estava a tratar um client
         HashMap<String, String> userHandling = new HashMap<>();
         //Mapa para as respostas depois dos acks e pedidos repetidos;
-        HashMap<String, CompletableFuture> responses = new HashMap<>();
+        HashMap<String, Map.Entry<Object, CompletableFuture>> responses = new HashMap<>();
         //Mapa para os acks dos backups;
         HashMap<String, Set<String>> acks = new HashMap<>();
         //Set de servidores antes de mim a serem primários;
@@ -55,22 +55,27 @@ public class Server {
 
             sp.handler(Ack.class, (s, m) -> {
                 System.out.println("ACK");
+                //Obter os membros que faltam dar ACK
                 Set members = acks.get(m.id);
+                //Remover este dos que faltam
                 members.remove(s.getSender().toString());
-                //Se só falto eu
-                if(members.size() == 1)
-                    fillResponse(responses, m.id, m.op);
+                //Se só falto eu, completo a resposta com o objeto correto;
+                if(members.size() == 1) {
+                    responses.get(m.id).getValue().complete(responses.get(m.id).getKey());
+                    acks.remove(m.id);
+                }
             });
 
             //Nova task
             sp.handler(AddTasksReq.class, (s, m) -> {
                 if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())){
                     System.out.println("NOVA TASK");
+                    System.exit(1);
                     SpreadMessage sm = new SpreadMessage();
                     sm.addGroup(s.getSender());
                     sm.setFifo();
                     sm.setReliable();
-                    sp.multicast(sm, new Ack(m.id, 1));
+                    sp.multicast(sm, new Ack(m.id));
                 }
             });
 
@@ -93,10 +98,21 @@ public class Server {
                 if(membersBeforeMe.size() == 0)
                     for (SpreadGroup sg : m.getMembers())
                         membersBeforeMe.add(sg.toString());
+
                 //Portanto, alguém saiu, por isso vamos retira-lo do set se
                 //está lá.
-                if(m.isCausedByLeave() || m.isCausedByDisconnect())
+                if (m.isCausedByLeave() || m.isCausedByDisconnect()) {
                     membersBeforeMe.remove(m.getDisconnected().toString());
+                    for (Map.Entry<String, Set<String>> entry : acks.entrySet()) {
+                        entry.getValue().remove(m.getDisconnected().toString());
+                    //Quem morreu era o ultimo ACK que eu precisava;
+                        if (entry.getValue().size() == 1) {
+                            responses.get(entry.getKey()).getValue().complete(responses.get(entry.getKey()).getKey());
+                            acks.remove(entry.getKey());
+                        }
+                    }
+                }
+
                 //Só existo eu no set e não sou primário
                 if(membersBeforeMe.size() == 1 && !isPrimary)
                     startPrimary(t, 5000, tasks, userHandling, responses, acks, sp, spreadGroups);
@@ -104,40 +120,40 @@ public class Server {
         });
     }
 
-    private static void fillResponse(HashMap<String, CompletableFuture> responses, String id, int op){
-        switch (op) {
-            case 1:
-                responses.get(id).complete(new AddTasksRep(id, true));
-                break;
-        }
-    }
-
     private static void startPrimary(Transport t, int port, Task tasks, HashMap<String, String> userHandling,
-                                     HashMap<String, CompletableFuture> responses,
+                                     HashMap<String, Map.Entry<Object, CompletableFuture>> responses,
                                      HashMap<String, Set<String>> acks, Spread sp,
                                      Set<String> spreadGroups){
         //Client server;
         System.out.println("\u001B[34mINITIALIZING PRIMARY SERVER\u001B[0m");
         t.server().listen(new Address("127.0.0.1", port), conn -> {
+
             conn.handler(AddTasksReq.class, (m) -> {
                 if(responses.containsKey(m.id))
-                    return responses.get(m.id);
-
-                System.out.println("New task");
-                CompletableFuture<AddTasksRep> response = new CompletableFuture<>();
+                    return responses.get(m.id).getValue();
+                //Processa o pedido
                 boolean result = tasks.addTask(m.uri);
-                responses.put(m.id, response);
+                //Pedido não foi bem sucedido portanto não enviamos para os Backup
+                if(!result)
+                    return Futures.completedFuture(new AddTasksRep(m.id, result));
+                //Aqui o pedido foi bem sucedido
+                CompletableFuture<AddTasksRep> response = new CompletableFuture<>();
+                //Entry com a resposta para completar e o futuro a ser completado
+                Map.Entry me = new AbstractMap.SimpleEntry(new AddTasksRep(m.id, result), response);
+                responses.put(m.id, me);
 
+                //Backups neste momento ativos;
+                Set s = new HashSet();
+                for (String sg : spreadGroups)
+                    s.add(sg);
+                //Precisamos dos ACK's deles porque blocking;
+                acks.put(m.id, s);
+
+                //Multicast da mensagem para os Backup;
                 SpreadMessage sm = new SpreadMessage();
                 sm.addGroup("CRAWLERS");
                 sm.setFifo();
                 sm.setReliable();
-                Set s = new HashSet();
-
-                for (String sg : spreadGroups)
-                    s.add(sg);
-
-                acks.put(m.id, s);
                 sp.multicast(sm, m);
 
                 return response;
@@ -145,7 +161,7 @@ public class Server {
 
             conn.handler(GetTaskReq.class, (m) -> {
                 if(responses.containsKey(m.id))
-                    return responses.get(m.id);
+                    return responses.get(m.id).getValue();
 
                 System.out.println("Get task");
                 String uri = tasks.getTask();
@@ -156,7 +172,7 @@ public class Server {
 
             conn.handler(CompleteTaskReq.class, (m) -> {
                 if(responses.containsKey(m.id))
-                    return responses.get(m.id);
+                    return responses.get(m.id).getValue();
 
                 System.out.println("Complete task");
                 String taskEnded = m.uri;
