@@ -48,14 +48,17 @@ public class RecoverRep implements CatalystSerializable {
         tasks = new ArrayList<>();
         onGoing = new ArrayList<>();
         responses = new HashMap<>();
+        int size = bufferInput.readInt();
 
-        for(int i = 0; i < bufferInput.readInt(); i++)
+        for(int i = 0; i < size; i++)
             tasks.add(bufferInput.readString());
 
-        for(int i = 0; i < bufferInput.readInt(); i++)
+        size = bufferInput.readInt();
+        for(int i = 0; i < size; i++)
             onGoing.add(bufferInput.readString());
 
-        for(int i = 0; i < bufferInput.readInt(); i++)
+        size = bufferInput.readInt();
+        for(int i = 0; i < size; i++)
             responses.put(bufferInput.readString(),
                           new AbstractMap.SimpleEntry(serializer.readObject(bufferInput), serializer.readObject(bufferInput)))  ;
 

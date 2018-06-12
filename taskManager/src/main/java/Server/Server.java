@@ -129,7 +129,6 @@ public class Server {
             });
 
             sp.handler(RecoverReq.class, (s, m) -> {
-                System.out.println("ASKING FOR STATE");
 
                 SpreadMessage sm = new SpreadMessage();
                 sm.addGroup(s.getSender());
@@ -137,15 +136,20 @@ public class Server {
                 sm.setReliable();
 
                 RecoverRep recRep = new RecoverRep(((TaskImpl) tasks).getTasks(), ((TaskImpl) tasks).getOnGoing(), responses);
+                System.out.println("REPLY FOR STATE");
                 sp.multicast(sm, recRep);
             });
 
             sp.handler(RecoverRep.class, (s, m) -> {
+                System.out.println("GOT STATE");
                 askedStateTo.set("");
                 responses.clear();
                 for(String k : m.responses.keySet())
                     responses.put(k,m.responses.get(k));
-                ((TaskImpl) tasks).setOnGoing(m.onGoing);
+                tasks.setOnGoing(m.onGoing);
+                tasks.setTasks(m.tasks);
+
+                tasks.print();
             });
 
             sp.handler(MembershipInfo.class, (s, m) -> {
@@ -162,14 +166,16 @@ public class Server {
                 if( (m.isCausedByJoin() && m.getJoined().toString().equals(sp.getPrivateGroup().toString()))
                         || (m.isCausedByDisconnect() && m.getDisconnected().equals(askedStateTo.get()))) {
                     for (String g : spreadGroups) {
-                        System.out.println("ASKING FOR STATE");
-                        askedStateTo.set(g);
-                        SpreadMessage sm = new SpreadMessage();
-                        sm.addGroup(g);
-                        sm.setFifo();
-                        sm.setReliable();
-                        sp.multicast(sm, (new RecoverReq()));
-                        break;
+                        if(!g.equals(sp.getPrivateGroup().toString())) {
+                            System.out.println("ASKING FOR STATE");
+                            askedStateTo.set(g);
+                            SpreadMessage sm = new SpreadMessage();
+                            sm.addGroup(g);
+                            sm.setFifo();
+                            sm.setReliable();
+                            sp.multicast(sm, (new RecoverReq()));
+                            break;
+                        }
                     }
                 }
 
