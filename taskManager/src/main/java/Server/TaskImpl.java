@@ -16,7 +16,27 @@ public class TaskImpl implements Task{
 
     @Override
     public boolean addTask(String uri){
-        return tasks.add(uri);
+        if(!tasks.contains(uri))
+            return tasks.add(uri);
+        else
+            return false;
+    }
+
+    public boolean tasksContains(String uri){
+        return tasks.contains(uri);
+    }
+
+    public boolean addTaskIndex(String uri, int index) {
+        if (!tasks.contains(uri)){
+            if (index == tasks.size()) {
+                tasks.add(index, uri);
+            } else {
+                tasks.set(index, uri);
+            }
+            return true;
+        }
+
+        return false;
     }
 
     public int taskIndex(String uri){
@@ -34,18 +54,43 @@ public class TaskImpl implements Task{
         //Existem novas tasks associadas a este uri??
         if(newTasks != null)
             for (String newURI: newTasks)
-                tasks.add(newURI);
-
+                if(!tasks.contains(newURI))
+                    tasks.add(newURI);
         return onGoing.remove(uri);
     }
 
     @Override
     public String getTask(){
-        String task = tasks.get(0);
-        if(task != null) {
+        String task = null;
+        if(tasks.size() > 0) {
+            task = tasks.get(0);
             onGoing.add(task);
             tasks.remove(0);
         }
         return task;
+    }
+
+    public void moveTaskToOngoing(String uri){
+        tasks.remove(uri);
+        onGoing.add(uri);
+    }
+
+    public void moveOngoingToQueue(String uri){
+        onGoing.remove(uri);
+        tasks.add(0, uri);
+    }
+
+    public void removeOngoing(String uri){
+        onGoing.remove(uri);
+    }
+
+    public void print(){
+        System.out.print("[");
+        for(String s: tasks)
+            System.out.print(s + ", ");
+        System.out.print("]\n[");
+        for(String s: onGoing)
+            System.out.print(s + ", ");
+        System.out.print("]\n");
     }
 }

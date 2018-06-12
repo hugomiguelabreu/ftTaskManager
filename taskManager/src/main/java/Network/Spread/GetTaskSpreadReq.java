@@ -9,21 +9,23 @@ public class GetTaskSpreadReq implements CatalystSerializable{
 
     public String id;
     public String uri;
-    public String user;//COMO VOU DISTINGUIR NAS REPLICAS???
 
     public GetTaskSpreadReq(){}
 
-    public GetTaskSpreadReq(String idParam){
+    public GetTaskSpreadReq(String idParam, String uriParam){
         id = idParam;
+        uri = uriParam;
     }
 
     @Override
     public void writeObject(BufferOutput<?> bufferOutput, Serializer serializer) {
         bufferOutput.writeString(id);
+        bufferOutput.writeString(uri);
     }
 
     @Override
     public void readObject(BufferInput<?> bufferInput, Serializer serializer) {
         id = bufferInput.readString();
+        uri = bufferInput.readString();
     }
 }

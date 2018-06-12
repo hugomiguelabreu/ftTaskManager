@@ -7,31 +7,27 @@ import io.atomix.catalyst.serializer.Serializer;
 
 import java.util.ArrayList;
 
-public class UncompleteTaskSpreadReq implements CatalystSerializable{
+public class IncompleteTaskSpreadReq implements CatalystSerializable{
 
     public String id;
     public String uri;
-    public int index;
 
-    public UncompleteTaskSpreadReq(){}
+    public IncompleteTaskSpreadReq(){}
 
-    public UncompleteTaskSpreadReq(String idParam, String uriParam, int indexParam){
+    public IncompleteTaskSpreadReq(String idParam, String uriParam){
         uri = uriParam;
         id = idParam;
-        index = indexParam;
     }
 
     @Override
     public void writeObject(BufferOutput<?> bufferOutput, Serializer serializer) {
         bufferOutput.writeString(id);
         bufferOutput.writeString(uri);
-        bufferOutput.writeInt(index);
     }
 
     @Override
     public void readObject(BufferInput<?> bufferInput, Serializer serializer) {
         id = bufferInput.readString();
         uri = bufferInput.readString();
-        index = bufferInput.readInt();
     }
 }

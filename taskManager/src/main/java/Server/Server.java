@@ -1,6 +1,5 @@
 package Server;
 
-import Interfaces.Task;
 import Network.*;
 import Network.Spread.*;
 import io.atomix.catalyst.concurrent.Futures;
@@ -34,7 +33,7 @@ public class Server {
         Set<String> membersBeforeMe = new HashSet<>();
         //Servidores da vista
         Set<String> spreadGroups = new HashSet<>();
-        Task tasks = new TaskImpl();
+        TaskImpl tasks = new TaskImpl();
         Transport t = new NettyTransport();;
         ThreadContext tc = new SingleThreadContext("srv-%d", new Serializer());
         Spread sp = new Spread("server-" + UUID.randomUUID().toString().split("-")[4], true);
@@ -63,6 +62,7 @@ public class Server {
                 //Se só falto eu, completo a resposta com o objeto correto;
                 if(members.size() == 1) {
                     responses.get(m.id).getValue().complete(responses.get(m.id).getKey());
+                    //Já respondi posso remover a espera de ACKS
                     acks.remove(m.id);
                 }
             });
@@ -71,6 +71,9 @@ public class Server {
             sp.handler(AddTasksSpreadReq.class, (s, m) -> {
                 if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())){
                     System.out.println("NOVA TASK");
+                    //Adiciona a task de forma deterministica
+                    tasks.addTaskIndex(m.uri, m.index);
+                    //Confirma a atualização de estado
                     SpreadMessage sm = new SpreadMessage();
                     sm.addGroup(s.getSender());
                     sm.setFifo();
@@ -81,16 +84,45 @@ public class Server {
 
             //Colocar task no ongoing
             sp.handler(GetTaskSpreadReq.class, (s, m) -> {
-                System.out.println("PREMUTAR PARA EM TRATAMENTO");
+                if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())){
+                    System.out.println("PERMUTAR TASK PARA TRATAMENTO");
+                    //Move a task para ongoing de forma determinista
+                    tasks.moveTaskToOngoing(m.uri);
+                    tasks.print();
+                    //Confirma a atualização de estado
+                    SpreadMessage sm = new SpreadMessage();
+                    sm.addGroup(s.getSender());
+                    sm.setFifo();
+                    sm.setReliable();
+                    sp.multicast(sm, new Ack(m.id));
+                }
             });
 
             //Completar a task
             sp.handler(CompleteTaskSpreadReq.class, (s, m) -> {
-                System.out.println("TASK COMPLETA");
+                if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())) {
+                    System.out.println("TASK COMPLETA");
+                    //Adiciona as novas tasks nos sitios deterministicos
+                    for (int i = 0; i < m.size; i++) {
+                        tasks.addTaskIndex(m.tasks.get(i), m.indexes.get(i));
+                    }
+                    //Remove a task do que estava a fazer
+                    tasks.removeOngoing(m.uri);
+                    tasks.print();
+                    //Confirma a atualização de estado
+                    SpreadMessage sm = new SpreadMessage();
+                    sm.addGroup(s.getSender());
+                    sm.setFifo();
+                    sm.setReliable();
+                    sp.multicast(sm, new Ack(m.id));
+                }
             });
 
-            sp.handler(UncompleteTaskSpreadReq.class, (s, m) -> {
-                System.out.println("TASK COMPLETA");
+            sp.handler(IncompleteTaskSpreadReq.class, (s, m) -> {
+                if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())) {
+                    System.out.println("TASK INCOMPLETA");
+                    tasks.moveOngoingToQueue(m.uri);
+                }
             });
 
             sp.handler(MembershipInfo.class, (s, m) -> {
@@ -99,9 +131,10 @@ public class Server {
                     spreadGroups.add(sg.toString());
 
                 //Se o set está vazio é porque estou a iniciar
-                if(membersBeforeMe.size() == 0)
+                if(membersBeforeMe.size() == 0) {
                     for (SpreadGroup sg : m.getMembers())
                         membersBeforeMe.add(sg.toString());
+                }
 
                 //Portanto, alguém saiu, por isso vamos retira-lo do set se
                 //está lá.
@@ -125,7 +158,7 @@ public class Server {
         });
     }
 
-    private static void startPrimary(Transport t, int port, Task tasks, HashMap<String, String> userHandling,
+    private static void startPrimary(Transport t, int port, TaskImpl tasks, HashMap<String, String> userHandling,
                                      HashMap<String, Map.Entry<Object, CompletableFuture>> responses,
                                      HashMap<String, Set<String>> acks, Spread sp,
                                      Set<String> spreadGroups){
@@ -134,7 +167,6 @@ public class Server {
         t.server().listen(new Address("127.0.0.1", port), conn -> {
 
             conn.handler(AddTasksReq.class, (m) -> {
-                System.out.println(conn.toString());
                 if(responses.containsKey(m.id))
                     return responses.get(m.id).getValue();
                 //Processa o pedido
@@ -142,8 +174,8 @@ public class Server {
                 //Pedido não foi bem sucedido portanto não enviamos para os Backup
                 if(!result)
                     return Futures.completedFuture(new AddTasksRep(m.id, result));
-                
                 //Aqui o pedido foi bem sucedido
+                int resultIndex = tasks.taskIndex(m.uri);
                 CompletableFuture<AddTasksRep> response = new CompletableFuture<>();
                 //Entry com a resposta para completar e o futuro a ser completado
                 Map.Entry me = new AbstractMap.SimpleEntry(new AddTasksRep(m.id, result), response);
@@ -153,7 +185,7 @@ public class Server {
                 Set s = new HashSet();
                 for (String sg : spreadGroups)
                     s.add(sg);
-                //Precisamos dos ACK's deles porque blocking;
+                //Precisamos dos ACK's deles porque temos abordagem blocking;
                 acks.put(m.id, s);
 
                 //Multicast da mensagem para os Backup;
@@ -161,7 +193,7 @@ public class Server {
                 sm.addGroup("CRAWLERS");
                 sm.setFifo();
                 sm.setReliable();
-                sp.multicast(sm, m);
+                sp.multicast(sm, new AddTasksSpreadReq(m.id, m.uri, resultIndex));
 
                 return response;
             });
@@ -169,32 +201,90 @@ public class Server {
             conn.handler(GetTaskReq.class, (m) -> {
                 if(responses.containsKey(m.id))
                     return responses.get(m.id).getValue();
-
-                System.out.println("Get task");
+                //Processa o pedido
                 String uri = tasks.getTask();
-                System.out.println(uri);
+                if(uri == null)
+                    return Futures.completedFuture(new GetTaskRep(m.id, uri));
+                //Aqui a resposta foi efetivamente um URL
                 userHandling.put(conn.toString(), uri);
-                return Futures.completedFuture(new GetTaskRep(m.id, uri));
+                CompletableFuture<GetTaskRep> response = new CompletableFuture<>();
+                //Entry com a resposta para completar e o futuro a ser completado
+                Map.Entry me = new AbstractMap.SimpleEntry(new GetTaskRep(m.id, uri), response);
+                responses.put(m.id, me);
+
+                //Backups neste momento ativos;
+                Set s = new HashSet();
+                for (String sg : spreadGroups)
+                    s.add(sg);
+                //Precisamos dos ACK's deles porque temos abordagem blocking;
+                acks.put(m.id, s);
+
+                //Multicast da mensagem para os Backup;
+                SpreadMessage sm = new SpreadMessage();
+                sm.addGroup("CRAWLERS");
+                sm.setFifo();
+                sm.setReliable();
+                sp.multicast(sm, new GetTaskSpreadReq(m.id, uri));
+
+                return response;
             });
 
             conn.handler(CompleteTaskReq.class, (m) -> {
                 if(responses.containsKey(m.id))
                     return responses.get(m.id).getValue();
-
-                System.out.println("Complete task");
                 String taskEnded = m.uri;
-                ArrayList<String> newTasks = m.tasks;
+                ArrayList<String> newTasks = new ArrayList<>();
+                for (String taskNew: m.tasks)
+                    if(!tasks.tasksContains(taskNew))
+                        newTasks.add(taskNew);
+
                 System.out.println(taskEnded);
                 boolean result = tasks.completeTask(taskEnded, newTasks);
-                return Futures.completedFuture(new CompleteTaskRep(m.id, result));
+                if(!result)
+                    return Futures.completedFuture(new CompleteTaskRep(m.id, result));
+                //Aqui o processamento completo foi efetuado
+                userHandling.remove(conn.toString());
+                //Obter os indices onde adicionamos cada nova task para processamento deterministico
+                ArrayList<Integer> indexes = new ArrayList<>();
+                for(String newTask: newTasks)
+                    indexes.add(tasks.taskIndex(newTask));
+
+                CompletableFuture<CompleteTaskRep> response = new CompletableFuture<>();
+                //Entry com a resposta para completar e o futuro a ser completado
+                Map.Entry me = new AbstractMap.SimpleEntry(new CompleteTaskRep(m.id, result), response);
+                responses.put(m.id, me);
+
+                //Backups neste momento ativos;
+                Set s = new HashSet();
+                for (String sg : spreadGroups)
+                    s.add(sg);
+                //Precisamos dos ACK's deles porque temos abordagem blocking;
+                acks.put(m.id, s);
+
+                //Multicast da mensagem para os Backup;
+                SpreadMessage sm = new SpreadMessage();
+                sm.addGroup("CRAWLERS");
+                sm.setFifo();
+                sm.setReliable();
+                sp.multicast(sm, new CompleteTaskSpreadReq(m.id, m.uri, newTasks, indexes));
+
+                return response;
             });
 
             //Um cliente vai abaixo vamos colocar a task dele a não completa
             conn.onClose(connection -> {
                 String user = connection.toString();
                 String uri = userHandling.get(user);
-                tasks.setUncompleted(uri);
-                System.out.println("Client closed. Task reinserted.");
+                if(uri!=null) {
+                    tasks.setUncompleted(uri);
+                    //Multicast da mensagem para os Backup;
+                    SpreadMessage sm = new SpreadMessage();
+                    sm.addGroup("CRAWLERS");
+                    sm.setFifo();
+                    sm.setReliable();
+                    sp.multicast(sm, new IncompleteTaskSpreadReq(conn.toString(), uri));
+                    System.out.println("Client closed. Task reinserted.");
+                }
             });
         });
 

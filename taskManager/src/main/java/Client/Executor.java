@@ -35,6 +35,7 @@ public class Executor extends Thread {
             }else{
                 //Espera por novos trabalhos / Novos servidores
                 try {
+                    System.out.println("NO WORK. WAITING 5 sec.");
                     Thread.sleep(5000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
