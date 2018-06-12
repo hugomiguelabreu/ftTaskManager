@@ -6,12 +6,12 @@ import java.util.ArrayList;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 public class TaskImpl implements Task{
-    private ConcurrentLinkedDeque<String> tasks;
-    private ConcurrentLinkedDeque<String> onGoing;
+    private ArrayList<String> tasks;
+    private ArrayList<String> onGoing;
 
     public TaskImpl(){
-        tasks = new ConcurrentLinkedDeque<>();
-        onGoing = new ConcurrentLinkedDeque<>();
+        tasks = new ArrayList<>();
+        onGoing = new ArrayList<>();
     }
 
     @Override
@@ -19,10 +19,14 @@ public class TaskImpl implements Task{
         return tasks.add(uri);
     }
 
+    public int taskIndex(String uri){
+        return tasks.indexOf(uri);
+    }
+
     @Override
     public void setUncompleted(String uri){
         if(onGoing.remove(uri))
-            tasks.addFirst(uri);
+            tasks.add(0, uri);
     }
 
     @Override
@@ -37,9 +41,11 @@ public class TaskImpl implements Task{
 
     @Override
     public String getTask(){
-        String task = tasks.poll();
-        if(task != null)
+        String task = tasks.get(0);
+        if(task != null) {
             onGoing.add(task);
+            tasks.remove(0);
+        }
         return task;
     }
 }

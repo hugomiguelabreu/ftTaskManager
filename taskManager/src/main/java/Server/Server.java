@@ -118,8 +118,9 @@ public class Server {
                 }
 
                 //Só existo eu no set e não sou primário
-                if(membersBeforeMe.size() == 1 && !isPrimary)
+                if(membersBeforeMe.size() == 1 && !isPrimary) {
                     startPrimary(t, 5000, tasks, userHandling, responses, acks, sp, spreadGroups);
+                }
             });
         });
     }
@@ -141,6 +142,7 @@ public class Server {
                 //Pedido não foi bem sucedido portanto não enviamos para os Backup
                 if(!result)
                     return Futures.completedFuture(new AddTasksRep(m.id, result));
+                
                 //Aqui o pedido foi bem sucedido
                 CompletableFuture<AddTasksRep> response = new CompletableFuture<>();
                 //Entry com a resposta para completar e o futuro a ser completado

@@ -104,6 +104,7 @@ public class TaskStub implements Task {
                 c = tc.execute(() ->
                         t.client().connect(primary)
                 ).join().get();
+
                 System.out.println("Connected to primary server");
                 return true;
             }
