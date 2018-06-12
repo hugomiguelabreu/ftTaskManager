@@ -111,6 +111,12 @@ public class TaskStub implements Task {
             catch (Exception e){
                 System.out.println("Primary server is down, trying again.");
             }
+            try {
+                System.out.println("NO SERVERS WAITING A BIT");
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         }
         return false;
     }

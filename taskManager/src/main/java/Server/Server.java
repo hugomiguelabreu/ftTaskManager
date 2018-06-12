@@ -171,8 +171,8 @@ public class Server {
                     return responses.get(m.id).getValue();
                 //Processa o pedido
                 boolean result = tasks.addTask(m.uri);
-                //Pedido não foi bem sucedido portanto não enviamos para os Backup
-                if(!result)
+                //Pedido não foi bem sucedido ou não há backups portanto não enviamos para os Backup
+                if(!result || spreadGroups.size() == 1)
                     return Futures.completedFuture(new AddTasksRep(m.id, result));
                 //Aqui o pedido foi bem sucedido
                 int resultIndex = tasks.taskIndex(m.uri);
@@ -203,7 +203,7 @@ public class Server {
                     return responses.get(m.id).getValue();
                 //Processa o pedido
                 String uri = tasks.getTask();
-                if(uri == null)
+                if(uri == null || spreadGroups.size() == 1)
                     return Futures.completedFuture(new GetTaskRep(m.id, uri));
                 //Aqui a resposta foi efetivamente um URL
                 userHandling.put(conn.toString(), uri);
@@ -240,7 +240,7 @@ public class Server {
 
                 System.out.println(taskEnded);
                 boolean result = tasks.completeTask(taskEnded, newTasks);
-                if(!result)
+                if(!result || spreadGroups.size() == 1)
                     return Futures.completedFuture(new CompleteTaskRep(m.id, result));
                 //Aqui o processamento completo foi efetuado
                 userHandling.remove(conn.toString());
@@ -285,6 +285,7 @@ public class Server {
                     sp.multicast(sm, new IncompleteTaskSpreadReq(conn.toString(), uri));
                     System.out.println("Client closed. Task reinserted.");
                 }
+                tasks.print();
             });
         });
 
