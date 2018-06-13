@@ -24,8 +24,10 @@ public class Server {
     static boolean isPrimary = false;
 
     public static void main(String[] args) throws SpreadException {
-        //Mapa de conexões para saber que uri estava a tratar um client
+        //Mapa de conexões ID -> uri para saber que uri estava a tratar um client
         HashMap<String, String> userHandling = new HashMap<>();
+        //Mapa de conexões conn -> ID para saber que uri estava a tratar um client
+        HashMap<String, String> userRegistrar = new HashMap<>();
         //Mapa para as respostas depois dos acks e pedidos repetidos;
         HashMap<String, Map.Entry<Object, CompletableFuture>> responses = new HashMap<>();
         //Mapa para os acks dos backups;
@@ -91,6 +93,7 @@ public class Server {
                     System.out.println("PERMUTAR TASK PARA TRATAMENTO");
                     //Move a task para ongoing de forma determinista
                     tasks.moveTaskToOngoing(m.uri);
+                    userHandling.put(m.clientuid, m.uri);
                     tasks.print();
                     //Confirma a atualização de estado
                     SpreadMessage sm = new SpreadMessage();
@@ -111,6 +114,7 @@ public class Server {
                     }
                     //Remove a task do que estava a fazer
                     tasks.removeOngoing(m.uri);
+                    userHandling.remove(m.clientuid);
                     tasks.print();
                     //Confirma a atualização de estado
                     SpreadMessage sm = new SpreadMessage();
@@ -195,7 +199,7 @@ public class Server {
 
                 //Só existo eu no set e não sou primário
                 if(membersBeforeMe.size() == 1 && !isPrimary) {
-                    startPrimary(t, 5000, tasks, userHandling, responses, acks, sp, spreadGroups);
+                    startPrimary(t, 5000, tasks, userHandling, responses, acks, sp, spreadGroups, userRegistrar);
                 }
             });
         });
@@ -204,7 +208,7 @@ public class Server {
     private static void startPrimary(Transport t, int port, TaskImpl tasks, HashMap<String, String> userHandling,
                                      HashMap<String, Map.Entry<Object, CompletableFuture>> responses,
                                      HashMap<String, Set<String>> acks, Spread sp,
-                                     Set<String> spreadGroups){
+                                     Set<String> spreadGroups, HashMap<String, String> userRegistrar){
         //Client server;
         System.out.println("\u001B[34mINITIALIZING PRIMARY SERVER\u001B[0m");
         t.server().listen(new Address("127.0.0.1", port), conn -> {
@@ -248,8 +252,8 @@ public class Server {
                 String uri = tasks.getTask();
                 if(uri == null || spreadGroups.size() == 1)
                     return Futures.completedFuture(new GetTaskRep(m.id, uri));
-                //Aqui a resposta foi efetivamente um URL
-                userHandling.put(conn.toString(), uri);
+                //Aqui a resposta foi efetivamente um URL, registar o client a tratar
+                userHandling.put(userRegistrar.get(conn.toString()), uri);
                 CompletableFuture<GetTaskRep> response = new CompletableFuture<>();
                 //Entry com a resposta para completar e o futuro a ser completado
                 Map.Entry me = new AbstractMap.SimpleEntry(new GetTaskRep(m.id, uri), response);
@@ -267,7 +271,7 @@ public class Server {
                 sm.addGroup("CRAWLERS");
                 sm.setFifo();
                 sm.setReliable();
-                sp.multicast(sm, new GetTaskSpreadReq(m.id, uri));
+                sp.multicast(sm, new GetTaskSpreadReq(m.id, userRegistrar.get(conn.toString()), uri));
 
                 return response;
             });
@@ -276,6 +280,10 @@ public class Server {
                 if(responses.containsKey(m.id))
                     return responses.get(m.id).getValue();
                 String taskEnded = m.uri;
+                //Recoloquei a task pois demorou demasiado tempo a anunciar
+                if(!userHandling.containsValue(m.uri))
+                    return Futures.completedFuture(new CompleteTaskRep(m.id, false));
+                
                 ArrayList<String> newTasks = new ArrayList<>();
                 for (String taskNew: m.tasks)
                     if(!tasks.tasksContains(taskNew))
@@ -286,7 +294,7 @@ public class Server {
                 if(!result || spreadGroups.size() == 1)
                     return Futures.completedFuture(new CompleteTaskRep(m.id, result));
                 //Aqui o processamento completo foi efetuado
-                userHandling.remove(conn.toString());
+                userHandling.remove(userRegistrar.get(conn.toString()));
                 //Obter os indices onde adicionamos cada nova task para processamento deterministico
                 ArrayList<Integer> indexes = new ArrayList<>();
                 for(String newTask: newTasks)
@@ -309,30 +317,59 @@ public class Server {
                 sm.addGroup("CRAWLERS");
                 sm.setFifo();
                 sm.setReliable();
-                sp.multicast(sm, new CompleteTaskSpreadReq(m.id, m.uri, newTasks, indexes));
+                sp.multicast(sm, new CompleteTaskSpreadReq(m.id, userRegistrar.get(conn.toString()),
+                        m.uri, newTasks, indexes));
 
                 return response;
             });
 
+            //Cliente quer registar a sua conexão
+            conn.handler(ClientUIDReq.class, m ->{
+                userRegistrar.put(conn.toString(), m.clientuid);
+                return Futures.completedFuture(new ClientUIDRep(m.id, true));
+            });
+
             //Um cliente vai abaixo vamos colocar a task dele a não completa
             conn.onClose(connection -> {
-                String user = connection.toString();
-                String uri = userHandling.get(user);
+                String user = userRegistrar.get(connection.toString());
+                String uri = null;
+                if(user!=null)
+                    uri = userHandling.get(user);
                 if(uri!=null) {
                     tasks.setUncompleted(uri);
+                    userHandling.remove(user);
                     //Multicast da mensagem para os Backup;
                     SpreadMessage sm = new SpreadMessage();
                     sm.addGroup("CRAWLERS");
                     sm.setFifo();
                     sm.setReliable();
-                    sp.multicast(sm, new IncompleteTaskSpreadReq(conn.toString(), uri));
+                    sp.multicast(sm, new IncompleteTaskSpreadReq(user, uri));
                     System.out.println("Client closed. Task reinserted.");
                 }
+                userRegistrar.remove(connection.toString());
                 tasks.print();
             });
         });
-
         isPrimary = true;
+        //Os clientes têm no máximo 10 segundos para voltarem a anunciar-se
+        new Timer().schedule(new TimerTask() {
+            public void run() {
+                for (Map.Entry<String, String> e: userHandling.entrySet()) {
+                    if(!userRegistrar.containsValue(e.getKey())){
+                        //O cliente não se registou
+                        tasks.setUncompleted(e.getValue());
+                        userHandling.remove(e.getKey());
+                        //Multicast da mensagem para os Backup;
+                        SpreadMessage sm = new SpreadMessage();
+                        sm.addGroup("CRAWLERS");
+                        sm.setFifo();
+                        sm.setReliable();
+                        sp.multicast(sm, new IncompleteTaskSpreadReq(e.getKey(), e.getValue()));
+                        System.out.println("Client DID NOT SAY NOTHING. Task reinserted.");
+                    }
+                }
+            }
+        }, 10000);
     }
 
 }

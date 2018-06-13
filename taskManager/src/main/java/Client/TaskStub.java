@@ -21,6 +21,7 @@ public class TaskStub implements Task {
     private int currentServer;
     private final Address primary = new Address("127.0.0.1:5000");
     private String uid;
+    private String clientUID;
 
     public TaskStub(){
         currentServer = 0;
@@ -32,6 +33,7 @@ public class TaskStub implements Task {
         tc.serializer().register(CompleteTaskRep.class);
         tc.serializer().register(GetTaskReq.class);
         tc.serializer().register(GetTaskRep.class);
+        clientUID = UUID.randomUUID().toString().replace("-", "");
         generateUUID();
         connect();
     }
@@ -99,12 +101,19 @@ public class TaskStub implements Task {
     }
 
     private boolean connect(){
-        for(int i = 0; i < 10; i++){
+        while(true){
             try{
                 c = tc.execute(() ->
                         t.client().connect(primary)
                 ).join().get();
 
+                ClientUIDRep cr = (ClientUIDRep) tc.execute(() ->
+                        c.sendAndReceive(new ClientUIDReq(uid, clientUID))
+                ).join().get();
+
+                c.onClose((s) -> {
+                    connect();
+                });
                 System.out.println("Connected to primary server");
                 return true;
             }
@@ -113,12 +122,11 @@ public class TaskStub implements Task {
             }
             try {
                 System.out.println("NO SERVERS WAITING A BIT");
-                Thread.sleep(1000);
+                Thread.sleep(5000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
-        return false;
     }
 
 }
