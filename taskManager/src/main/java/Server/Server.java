@@ -78,6 +78,11 @@ public class Server {
                     System.out.println("NOVA TASK");
                     //Adiciona a task de forma deterministica
                     tasks.addTaskIndex(m.uri, m.index);
+                    AddTasksRep reply = new AddTasksRep(m.id, true);
+                    CompletableFuture<AddTasksRep> cf = new CompletableFuture<>();
+                    cf.complete(reply);
+                    Map.Entry e = new AbstractMap.SimpleEntry(reply, cf);
+                    responses.put(m.id, e);
                     //Confirma a atualização de estado
                     SpreadMessage sm = new SpreadMessage();
                     sm.addGroup(s.getSender());
@@ -94,7 +99,11 @@ public class Server {
                     //Move a task para ongoing de forma determinista
                     tasks.moveTaskToOngoing(m.uri);
                     userHandling.put(m.clientuid, m.uri);
-                    tasks.print();
+                    GetTaskRep reply = new GetTaskRep(m.id, m.uri);
+                    CompletableFuture<GetTaskRep> cf = new CompletableFuture<>();
+                    cf.complete(reply);
+                    Map.Entry e = new AbstractMap.SimpleEntry(reply, cf);
+                    responses.put(m.id, e);
                     //Confirma a atualização de estado
                     SpreadMessage sm = new SpreadMessage();
                     sm.addGroup(s.getSender());
@@ -115,6 +124,11 @@ public class Server {
                     //Remove a task do que estava a fazer
                     tasks.removeOngoing(m.uri);
                     userHandling.remove(m.clientuid);
+                    CompleteTaskRep reply = new CompleteTaskRep(m.id, true);
+                    CompletableFuture<CompleteTaskRep> cf = new CompletableFuture<>();
+                    cf.complete(reply);
+                    Map.Entry e = new AbstractMap.SimpleEntry(reply, cf);
+                    responses.put(m.id, e);
                     tasks.print();
                     //Confirma a atualização de estado
                     SpreadMessage sm = new SpreadMessage();
@@ -129,6 +143,7 @@ public class Server {
                 if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())) {
                     System.out.println("TASK INCOMPLETA");
                     tasks.moveOngoingToQueue(m.uri);
+                    userHandling.remove(m.id);
                 }
             });
 
@@ -277,13 +292,15 @@ public class Server {
             });
 
             conn.handler(CompleteTaskReq.class, (m) -> {
+                //Recoloquei a task pois demorou demasiado tempo a anunciar
+                if(!userHandling.containsValue(m.uri) && !responses.containsKey(m.id))
+                        return Futures.completedFuture(new CompleteTaskRep(m.id, false));
+
                 if(responses.containsKey(m.id))
                     return responses.get(m.id).getValue();
+
                 String taskEnded = m.uri;
-                //Recoloquei a task pois demorou demasiado tempo a anunciar
-                if(!userHandling.containsValue(m.uri))
-                    return Futures.completedFuture(new CompleteTaskRep(m.id, false));
-                
+
                 ArrayList<String> newTasks = new ArrayList<>();
                 for (String taskNew: m.tasks)
                     if(!tasks.tasksContains(taskNew))
@@ -319,7 +336,7 @@ public class Server {
                 sm.setReliable();
                 sp.multicast(sm, new CompleteTaskSpreadReq(m.id, userRegistrar.get(conn.toString()),
                         m.uri, newTasks, indexes));
-
+                //System.exit(1);
                 return response;
             });
 

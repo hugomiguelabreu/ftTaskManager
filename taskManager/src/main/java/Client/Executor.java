@@ -32,6 +32,7 @@ public class Executor extends Thread {
                     System.out.println(k);
                 boolean result = tc.completeTask(newUrl, newTasks);
                 System.out.println("Completed: " + result);
+                System.exit(0);
             }else{
                 //Espera por novos trabalhos / Novos servidores
                 try {
