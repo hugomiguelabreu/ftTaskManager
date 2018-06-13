@@ -23,25 +23,30 @@ public class Server {
 
     static boolean isPrimary = false;
 
-    public static void main(String[] args) throws SpreadException {
-        //Mapa de conexões ID -> uri para saber que uri estava a tratar um client
-        HashMap<String, String> userHandling = new HashMap<>();
-        //Mapa de conexões conn -> ID para saber que uri estava a tratar um client
-        HashMap<String, String> userRegistrar = new HashMap<>();
-        //Mapa para as respostas depois dos acks e pedidos repetidos;
-        HashMap<String, Map.Entry<Object, CompletableFuture>> responses = new HashMap<>();
-        //Mapa para os acks dos backups;
-        HashMap<String, Set<String>> acks = new HashMap<>();
-        //Set de servidores antes de mim a serem primários;
-        Set<String> membersBeforeMe = new HashSet<>();
-        //Servidores da vista
-        Set<String> spreadGroups = new HashSet<>();
-        TaskImpl tasks = new TaskImpl();
-        Transport t = new NettyTransport();;
-        ThreadContext tc = new SingleThreadContext("srv-%d", new Serializer());
-        Spread sp = new Spread("server-" + UUID.randomUUID().toString().split("-")[4], true);
+    static boolean available = false;
+    static Queue<Map.Entry<SpreadMessage,Object>> queue = new LinkedList<>();
 
-        AtomicReference<String> askedStateTo = new AtomicReference<>("");
+    //Mapa de conexões ID -> uri para saber que uri estava a tratar um client
+    static HashMap<String, String> userHandling = new HashMap<>();
+    //Mapa de conexões conn -> ID para saber que uri estava a tratar um client
+    static HashMap<String, String> userRegistrar = new HashMap<>();
+    //Mapa para as respostas depois dos acks e pedidos repetidos;
+    static HashMap<String, Map.Entry<Object, CompletableFuture>> responses = new HashMap<>();
+    //Mapa para os acks dos backups;
+    static HashMap<String, Set<String>> acks = new HashMap<>();
+    //Set de servidores antes de mim a serem primários;
+    static Set<String> membersBeforeMe = new HashSet<>();
+    //Servidores da vista
+    static Set<String> spreadGroups = new HashSet<>();
+    static AtomicReference<String> askedStateTo = new AtomicReference<>("");
+    static TaskImpl tasks = new TaskImpl();
+    static Transport t = new NettyTransport();;
+    static ThreadContext tc = new SingleThreadContext("srv-%d", new Serializer());
+    static Spread sp;
+
+
+    public static void main(String[] args) throws SpreadException {
+        sp = new Spread("server-" + UUID.randomUUID().toString().split("-")[4], true);
 
         tc.serializer().register(AddTasksReq.class);
         tc.serializer().register(AddTasksRep.class);
@@ -59,116 +64,55 @@ public class Server {
             });
 
             sp.handler(Ack.class, (s, m) -> {
-                System.out.println("ACK");
-                //Obter os membros que faltam dar ACK
-                Set members = acks.get(m.id);
-                //Remover este dos que faltam
-                members.remove(s.getSender().toString());
-                //Se só falto eu, completo a resposta com o objeto correto;
-                if(members.size() == 1) {
-                    responses.get(m.id).getValue().complete(responses.get(m.id).getKey());
-                    //Já respondi posso remover a espera de ACKS
-                    acks.remove(m.id);
-                }
+                if (available)
+                    ack_handle(s,m);
+                else
+                    queue.add( new AbstractMap.SimpleEntry(s, m));
             });
 
             //Nova task
             sp.handler(AddTasksSpreadReq.class, (s, m) -> {
-                if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())){
-                    System.out.println("NOVA TASK");
-                    //Adiciona a task de forma deterministica
-                    tasks.addTaskIndex(m.uri, m.index);
-                    AddTasksRep reply = new AddTasksRep(m.id, true);
-                    CompletableFuture<AddTasksRep> cf = new CompletableFuture<>();
-                    cf.complete(reply);
-                    Map.Entry e = new AbstractMap.SimpleEntry(reply, cf);
-                    responses.put(m.id, e);
-                    //Confirma a atualização de estado
-                    SpreadMessage sm = new SpreadMessage();
-                    sm.addGroup(s.getSender());
-                    sm.setFifo();
-                    sm.setReliable();
-                    sp.multicast(sm, new Ack(m.id));
-                }
+                if (available)
+                    addTasksSpreadReq_handle(s,m);
+                else
+                    queue.add( new AbstractMap.SimpleEntry(s, m));
             });
 
             //Colocar task no ongoing
             sp.handler(GetTaskSpreadReq.class, (s, m) -> {
-                if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())){
-                    System.out.println("PERMUTAR TASK PARA TRATAMENTO");
-                    //Move a task para ongoing de forma determinista
-                    tasks.moveTaskToOngoing(m.uri);
-                    userHandling.put(m.clientuid, m.uri);
-                    GetTaskRep reply = new GetTaskRep(m.id, m.uri);
-                    CompletableFuture<GetTaskRep> cf = new CompletableFuture<>();
-                    cf.complete(reply);
-                    Map.Entry e = new AbstractMap.SimpleEntry(reply, cf);
-                    responses.put(m.id, e);
-                    //Confirma a atualização de estado
-                    SpreadMessage sm = new SpreadMessage();
-                    sm.addGroup(s.getSender());
-                    sm.setFifo();
-                    sm.setReliable();
-                    sp.multicast(sm, new Ack(m.id));
-                }
+                if (available)
+                    getTaskSpreadReq_handle(s,m);
+                else
+                    queue.add( new AbstractMap.SimpleEntry(s, m));
             });
 
             //Completar a task
             sp.handler(CompleteTaskSpreadReq.class, (s, m) -> {
-                if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())) {
-                    System.out.println("TASK COMPLETA");
-                    //Adiciona as novas tasks nos sitios deterministicos
-                    for (int i = 0; i < m.size; i++) {
-                        tasks.addTaskIndex(m.tasks.get(i), m.indexes.get(i));
-                    }
-                    //Remove a task do que estava a fazer
-                    tasks.removeOngoing(m.uri);
-                    userHandling.remove(m.clientuid);
-                    CompleteTaskRep reply = new CompleteTaskRep(m.id, true);
-                    CompletableFuture<CompleteTaskRep> cf = new CompletableFuture<>();
-                    cf.complete(reply);
-                    Map.Entry e = new AbstractMap.SimpleEntry(reply, cf);
-                    responses.put(m.id, e);
-                    tasks.print();
-                    //Confirma a atualização de estado
-                    SpreadMessage sm = new SpreadMessage();
-                    sm.addGroup(s.getSender());
-                    sm.setFifo();
-                    sm.setReliable();
-                    sp.multicast(sm, new Ack(m.id));
-                }
+                if (available)
+                    completeTaskSpreadReq_handle(s,m);
+                else
+                    queue.add( new AbstractMap.SimpleEntry(s, m));
             });
 
             sp.handler(IncompleteTaskSpreadReq.class, (s, m) -> {
-                if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())) {
-                    System.out.println("TASK INCOMPLETA");
-                    tasks.moveOngoingToQueue(m.uri);
-                    userHandling.remove(m.id);
-                }
+                if (available)
+                    incompleteTaskSpreadReq_handle(s,m);
+                else
+                    queue.add( new AbstractMap.SimpleEntry(s, m));
             });
 
             sp.handler(RecoverReq.class, (s, m) -> {
-
-                SpreadMessage sm = new SpreadMessage();
-                sm.addGroup(s.getSender());
-                sm.setFifo();
-                sm.setReliable();
-
-                RecoverRep recRep = new RecoverRep(((TaskImpl) tasks).getTasks(), ((TaskImpl) tasks).getOnGoing(), responses);
-                System.out.println("REPLY FOR STATE");
-                sp.multicast(sm, recRep);
+                if (available)
+                    recoverReq_handle(s,m);
+                else
+                    queue.add(new AbstractMap.SimpleEntry(s, m));
             });
 
             sp.handler(RecoverRep.class, (s, m) -> {
-                System.out.println("GOT STATE");
-                askedStateTo.set("");
-                responses.clear();
-                for(String k : m.responses.keySet())
-                    responses.put(k,m.responses.get(k));
-                tasks.setOnGoing(m.onGoing);
-                tasks.setTasks(m.tasks);
-
-                tasks.print();
+                if (available)
+                    recoverRep_handle(s,m);
+                else
+                    queue.add(new AbstractMap.SimpleEntry(s, m));
             });
 
             sp.handler(MembershipInfo.class, (s, m) -> {
@@ -214,16 +158,151 @@ public class Server {
 
                 //Só existo eu no set e não sou primário
                 if(membersBeforeMe.size() == 1 && !isPrimary) {
-                    startPrimary(t, 5000, tasks, userHandling, responses, acks, sp, spreadGroups, userRegistrar);
+                    startPrimary(5000);
                 }
             });
         });
     }
 
-    private static void startPrimary(Transport t, int port, TaskImpl tasks, HashMap<String, String> userHandling,
-                                     HashMap<String, Map.Entry<Object, CompletableFuture>> responses,
-                                     HashMap<String, Set<String>> acks, Spread sp,
-                                     Set<String> spreadGroups, HashMap<String, String> userRegistrar){
+    public static void recoverQueue() {
+        while(!queue.isEmpty()){
+            Map.Entry msg = queue.poll();
+            switch (msg.getValue().getClass().getSimpleName()){
+                case "Ack":
+                    ack_handle((SpreadMessage) msg.getKey(),(Ack) msg.getValue());
+                    break;
+                case "AddTasksSpreadReq":
+                    addTasksSpreadReq_handle((SpreadMessage) msg.getKey(), (AddTasksSpreadReq) msg.getValue());
+                    break;
+                case "GetTaskSpreadReq":
+                    getTaskSpreadReq_handle((SpreadMessage) msg.getKey(), (GetTaskSpreadReq) msg.getValue());
+                    break;
+                case "CompleteTaskSpreadReq":
+                    completeTaskSpreadReq_handle((SpreadMessage) msg.getKey(), (CompleteTaskSpreadReq) msg.getValue());
+                    break;
+                case "IncompleteTaskSpreadReq":
+                    incompleteTaskSpreadReq_handle((SpreadMessage) msg.getKey(), (IncompleteTaskSpreadReq) msg.getValue());
+                    break;
+                case "RecoverReq":
+                    recoverReq_handle((SpreadMessage) msg.getKey(), (RecoverReq) msg.getValue());
+                    break;
+                case "RecoverRep":
+                    recoverRep_handle((SpreadMessage) msg.getKey(), (RecoverRep) msg.getValue());
+                    break;
+            }
+        }
+        available = true;
+    }
+
+    private static void ack_handle(SpreadMessage s, Ack m){
+        System.out.println("ACK");
+        //Obter os membros que faltam dar ACK
+        Set members = acks.get(m.id);
+        //Remover este dos que faltam
+        members.remove(s.getSender().toString());
+        //Se só falto eu, completo a resposta com o objeto correto;
+        if(members.size() == 1) {
+            responses.get(m.id).getValue().complete(responses.get(m.id).getKey());
+            //Já respondi posso remover a espera de ACKS
+            acks.remove(m.id);
+        }
+    }
+
+    private static void addTasksSpreadReq_handle(SpreadMessage s, AddTasksSpreadReq m){
+        if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())){
+            System.out.println("NOVA TASK");
+            //Adiciona a task de forma deterministica
+            tasks.addTaskIndex(m.uri, m.index);
+            AddTasksRep reply = new AddTasksRep(m.id, true);
+            CompletableFuture<AddTasksRep> cf = new CompletableFuture<>();
+            cf.complete(reply);
+            Map.Entry e = new AbstractMap.SimpleEntry(reply, cf);
+            responses.put(m.id, e);
+            //Confirma a atualização de estado
+            SpreadMessage sm = new SpreadMessage();
+            sm.addGroup(s.getSender());
+            sm.setFifo();
+            sm.setReliable();
+            sp.multicast(sm, new Ack(m.id));
+        }
+    }
+
+    private static void getTaskSpreadReq_handle(SpreadMessage s, GetTaskSpreadReq m){
+        if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())){
+            System.out.println("PERMUTAR TASK PARA TRATAMENTO");
+            //Move a task para ongoing de forma determinista
+            tasks.moveTaskToOngoing(m.uri);
+            userHandling.put(m.clientuid, m.uri);
+            GetTaskRep reply = new GetTaskRep(m.id, m.uri);
+            CompletableFuture<GetTaskRep> cf = new CompletableFuture<>();
+            cf.complete(reply);
+            Map.Entry e = new AbstractMap.SimpleEntry(reply, cf);
+            responses.put(m.id, e);
+            //Confirma a atualização de estado
+            SpreadMessage sm = new SpreadMessage();
+            sm.addGroup(s.getSender());
+            sm.setFifo();
+            sm.setReliable();
+            sp.multicast(sm, new Ack(m.id));
+        }
+    }
+
+    private static void completeTaskSpreadReq_handle(SpreadMessage s, CompleteTaskSpreadReq m){
+        if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())) {
+            System.out.println("TASK COMPLETA");
+            //Adiciona as novas tasks nos sitios deterministicos
+            for (int i = 0; i < m.size; i++) {
+                tasks.addTaskIndex(m.tasks.get(i), m.indexes.get(i));
+            }
+            //Remove a task do que estava a fazer
+            tasks.removeOngoing(m.uri);
+            userHandling.remove(m.clientuid);
+            CompleteTaskRep reply = new CompleteTaskRep(m.id, true);
+            CompletableFuture<CompleteTaskRep> cf = new CompletableFuture<>();
+            cf.complete(reply);
+            Map.Entry e = new AbstractMap.SimpleEntry(reply, cf);
+            responses.put(m.id, e);
+            tasks.print();
+            //Confirma a atualização de estado
+            SpreadMessage sm = new SpreadMessage();
+            sm.addGroup(s.getSender());
+            sm.setFifo();
+            sm.setReliable();
+            sp.multicast(sm, new Ack(m.id));
+        }
+    }
+
+    private static void incompleteTaskSpreadReq_handle(SpreadMessage s, IncompleteTaskSpreadReq m){
+        if(!s.getSender().toString().equals(sp.getPrivateGroup().toString())) {
+            System.out.println("TASK INCOMPLETA");
+            tasks.moveOngoingToQueue(m.uri);
+            userHandling.remove(m.id);
+        }
+    }
+
+    private static void recoverReq_handle(SpreadMessage s, RecoverReq m){
+        SpreadMessage sm = new SpreadMessage();
+        sm.addGroup(s.getSender());
+        sm.setFifo();
+        sm.setReliable();
+
+        RecoverRep recRep = new RecoverRep(((TaskImpl) tasks).getTasks(), ((TaskImpl) tasks).getOnGoing(), responses);
+        System.out.println("REPLY FOR STATE");
+        sp.multicast(sm, recRep);
+    }
+
+    private static void recoverRep_handle(SpreadMessage s, RecoverRep m){
+        System.out.println("GOT STATE");
+        askedStateTo.set("");
+        responses.clear();
+        for(String k : m.responses.keySet())
+            responses.put(k,m.responses.get(k));
+        tasks.setOnGoing(m.onGoing);
+        tasks.setTasks(m.tasks);
+        tasks.print();
+    }
+
+    private static void startPrimary(int port){
         //Client server;
         System.out.println("\u001B[34mINITIALIZING PRIMARY SERVER\u001B[0m");
         t.server().listen(new Address("127.0.0.1", port), conn -> {
