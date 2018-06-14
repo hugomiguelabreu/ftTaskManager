@@ -109,10 +109,7 @@ public class Server {
             });
 
             sp.handler(RecoverRep.class, (s, m) -> {
-                if (available)
-                    recoverRep_handle(s,m);
-                else
-                    queue.add(new AbstractMap.SimpleEntry(s, m));
+                recoverRep_handle(s,m);
             });
 
             sp.handler(MembershipInfo.class, (s, m) -> {
@@ -185,9 +182,6 @@ public class Server {
                     break;
                 case "RecoverReq":
                     recoverReq_handle((SpreadMessage) msg.getKey(), (RecoverReq) msg.getValue());
-                    break;
-                case "RecoverRep":
-                    recoverRep_handle((SpreadMessage) msg.getKey(), (RecoverRep) msg.getValue());
                     break;
             }
         }
@@ -299,6 +293,7 @@ public class Server {
             responses.put(k,m.responses.get(k));
         tasks.setOnGoing(m.onGoing);
         tasks.setTasks(m.tasks);
+        recoverQueue();
         tasks.print();
     }
 
