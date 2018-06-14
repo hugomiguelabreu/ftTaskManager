@@ -415,7 +415,6 @@ public class Server {
                 sm.setReliable();
                 sp.multicast(sm, new CompleteTaskSpreadReq(m.id, userRegistrar.get(conn.toString()),
                         m.uri, newTasks, indexes));
-                //System.exit(1);
                 return response;
             });
 

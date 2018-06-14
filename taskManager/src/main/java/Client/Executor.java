@@ -28,15 +28,12 @@ public class Executor extends Thread {
             String newUrl = tc.getTask();
             if(newUrl != null) {
                 ArrayList<String> newTasks = scrappe(newUrl);
-                for (String k : newTasks)
-                    System.out.println(k);
                 boolean result = tc.completeTask(newUrl, newTasks);
-                System.out.println("Completed: " + result);
-                System.exit(0);
+                System.out.println(newUrl + " completed: " + result);
             }else{
                 //Espera por novos trabalhos / Novos servidores
                 try {
-                    System.out.println("NO WORK. WAITING 5 sec.");
+                    System.out.println("NO WORK. WAITING 5 SEC.");
                     Thread.sleep(5000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
