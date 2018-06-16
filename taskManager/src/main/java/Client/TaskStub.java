@@ -116,15 +116,14 @@ public class TaskStub implements Task {
                 });
                 System.out.println("Connected to primary server");
                 return true;
-            }
-            catch (Exception e){
+            } catch (Exception e){
                 System.out.println("Primary server is down, trying again.");
-            }
-            try {
                 System.out.println("NO SERVERS WAITING A BIT");
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+                try {
+                    Thread.sleep(5000);
+                } catch (Exception e1) {
+                    e1.printStackTrace();
+                }
             }
         }
     }

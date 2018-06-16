@@ -23,7 +23,7 @@ public class Server {
 
     static boolean isPrimary = false;
 
-    static boolean available = false;
+    static boolean available = true;
     static Queue<Map.Entry<SpreadMessage,Object>> queue = new LinkedList<>();
 
     //Mapa de conexões ID -> uri para saber que uri estava a tratar um client
@@ -128,6 +128,7 @@ public class Server {
                     for (String g : spreadGroups) {
                         if(!g.equals(sp.getPrivateGroup().toString())) {
                             System.out.println("ASKING FOR STATE");
+                            available = false;
                             askedStateTo.set(g);
                             SpreadMessage sm = new SpreadMessage();
                             sm.addGroup(g);
@@ -143,12 +144,13 @@ public class Server {
                 //está lá.
                 if (m.isCausedByLeave() || m.isCausedByDisconnect()) {
                     membersBeforeMe.remove(m.getDisconnected().toString());
-                    for (Map.Entry<String, Set<String>> entry : acks.entrySet()) {
+                    for (Iterator<Map.Entry<String, Set<String>>> it = acks.entrySet().iterator(); it.hasNext();) {
+                        Map.Entry<String, Set<String>> entry = it.next();
                         entry.getValue().remove(m.getDisconnected().toString());
                     //Quem morreu era o ultimo ACK que eu precisava;
                         if (entry.getValue().size() == 1) {
                             responses.get(entry.getKey()).getValue().complete(responses.get(entry.getKey()).getKey());
-                            acks.remove(entry.getKey());
+                            it.remove();
                         }
                     }
                 }
@@ -339,7 +341,7 @@ public class Server {
                     return responses.get(m.id).getValue();
                 //Processa o pedido
                 String uri = tasks.getTask();
-                if(uri == null || spreadGroups.size() == 1)
+                if(uri == null)
                     return Futures.completedFuture(new GetTaskRep(m.id, uri));
                 //Aqui a resposta foi efetivamente um URL, registar o client a tratar
                 userHandling.put(userRegistrar.get(conn.toString()), uri);
@@ -347,7 +349,11 @@ public class Server {
                 //Entry com a resposta para completar e o futuro a ser completado
                 Map.Entry me = new AbstractMap.SimpleEntry(new GetTaskRep(m.id, uri), response);
                 responses.put(m.id, me);
-
+                //Só sou eu posso retornar a vontade
+                if(spreadGroups.size() == 1){
+                    responses.get(m.id).getValue().complete(responses.get(m.id).getKey());
+                    return response;
+                }
                 //Backups neste momento ativos;
                 Set s = new HashSet();
                 for (String sg : spreadGroups)
@@ -444,17 +450,18 @@ public class Server {
         //Os clientes têm no máximo 10 segundos para voltarem a anunciar-se
         new Timer().schedule(new TimerTask() {
             public void run() {
-                for (Map.Entry<String, String> e: userHandling.entrySet()) {
+                for (Iterator<Map.Entry<String, String>> it = userHandling.entrySet().iterator(); it.hasNext();) {
+                    Map.Entry e = it.next();
                     if(!userRegistrar.containsValue(e.getKey())){
                         //O cliente não se registou
-                        tasks.setUncompleted(e.getValue());
-                        userHandling.remove(e.getKey());
+                        tasks.setUncompleted((String) e.getValue());
+                        it.remove();
                         //Multicast da mensagem para os Backup;
                         SpreadMessage sm = new SpreadMessage();
                         sm.addGroup("CRAWLERS");
                         sm.setFifo();
                         sm.setReliable();
-                        sp.multicast(sm, new IncompleteTaskSpreadReq(e.getKey(), e.getValue()));
+                        sp.multicast(sm, new IncompleteTaskSpreadReq((String) e.getKey(), (String) e.getValue()));
                         System.out.println("Client DID NOT SAY NOTHING. Task reinserted.");
                     }
                 }

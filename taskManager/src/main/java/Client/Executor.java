@@ -25,7 +25,9 @@ public class Executor extends Thread {
         //Enquanto não houver sinal para parar
         //de tratar pedidos vamos continuar;
         while (!stop){
+            System.out.println("GET");
             String newUrl = tc.getTask();
+            System.out.println("GET DONE");
             if(newUrl != null) {
                 ArrayList<String> newTasks = scrappe(newUrl);
                 boolean result = tc.completeTask(newUrl, newTasks);
