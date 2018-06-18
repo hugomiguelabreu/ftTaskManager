@@ -31,7 +31,7 @@ public class TaskImpl implements Task{
             if (index >= tasks.size()) {
                 tasks.add(uri);
             } else {
-                tasks.set(index, uri);
+                tasks.add(index, uri);
             }
             return true;
         }

@@ -132,7 +132,7 @@ public class Server {
                             askedStateTo.set(g);
                             SpreadMessage sm = new SpreadMessage();
                             sm.addGroup(g);
-                            sm.setSafe();
+                            sm.setReliable();
                             sp.multicast(sm, (new RecoverReq()));
                             break;
                         }
@@ -216,7 +216,7 @@ public class Server {
             //Confirma a atualização de estado
             SpreadMessage sm = new SpreadMessage();
             sm.addGroup(s.getSender());
-            sm.setSafe();
+            sm.setReliable();
             sp.multicast(sm, new Ack(m.id));
         }
     }
@@ -235,7 +235,7 @@ public class Server {
             //Confirma a atualização de estado
             SpreadMessage sm = new SpreadMessage();
             sm.addGroup(s.getSender());
-            sm.setSafe();
+            sm.setReliable();
             sp.multicast(sm, new Ack(m.id));
         }
     }
@@ -259,7 +259,7 @@ public class Server {
             //Confirma a atualização de estado
             SpreadMessage sm = new SpreadMessage();
             sm.addGroup(s.getSender());
-            sm.setSafe();
+            sm.setReliable();
             sp.multicast(sm, new Ack(m.id));
         }
     }
@@ -275,7 +275,7 @@ public class Server {
     private static void recoverReq_handle(SpreadMessage s, RecoverReq m){
         SpreadMessage sm = new SpreadMessage();
         sm.addGroup(s.getSender());
-        sm.setSafe();
+        sm.setReliable();
 
         RecoverRep recRep = new RecoverRep(((TaskImpl) tasks).getTasks(), ((TaskImpl) tasks).getOnGoing(), responses);
         System.out.println("REPLY FOR STATE");
@@ -324,7 +324,7 @@ public class Server {
                 //Multicast da mensagem para os Backup;
                 SpreadMessage sm = new SpreadMessage();
                 sm.addGroup("CRAWLERS");
-                sm.setSafe();
+                sm.setReliable();
                 sp.multicast(sm, new AddTasksSpreadReq(m.id, m.uri, resultIndex));
 
                 return response;
@@ -358,7 +358,7 @@ public class Server {
                 //Multicast da mensagem para os Backup;
                 SpreadMessage sm = new SpreadMessage();
                 sm.addGroup("CRAWLERS");
-                sm.setSafe();
+                sm.setReliable();
                 sp.multicast(sm, new GetTaskSpreadReq(m.id, userRegistrar.get(conn.toString()), uri));
 
                 return response;
@@ -405,7 +405,7 @@ public class Server {
                 //Multicast da mensagem para os Backup;
                 SpreadMessage sm = new SpreadMessage();
                 sm.addGroup("CRAWLERS");
-                sm.setSafe();
+                sm.setReliable();
                 sp.multicast(sm, new CompleteTaskSpreadReq(m.id, userRegistrar.get(conn.toString()),
                         m.uri, newTasks, indexes));
                 return response;
@@ -429,7 +429,7 @@ public class Server {
                     //Multicast da mensagem para os Backup;
                     SpreadMessage sm = new SpreadMessage();
                     sm.addGroup("CRAWLERS");
-                    sm.setSafe();
+                    sm.setReliable();
                     sp.multicast(sm, new IncompleteTaskSpreadReq(user, uri));
                     System.out.println("Client closed. Task reinserted.");
                 }
@@ -450,7 +450,7 @@ public class Server {
                         //Multicast da mensagem para os Backup;
                         SpreadMessage sm = new SpreadMessage();
                         sm.addGroup("CRAWLERS");
-                        sm.setSafe();
+                        sm.setReliable();
                         sp.multicast(sm, new IncompleteTaskSpreadReq((String) e.getKey(), (String) e.getValue()));
                         System.out.println("Client DID NOT SAY NOTHING. Task reinserted.");
                     }
