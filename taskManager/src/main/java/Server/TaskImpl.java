@@ -43,7 +43,6 @@ public class TaskImpl implements Task{
         return tasks.indexOf(uri);
     }
 
-    @Override
     public void setUncompleted(String uri){
         if(onGoing.remove(uri))
             tasks.add(0, uri);

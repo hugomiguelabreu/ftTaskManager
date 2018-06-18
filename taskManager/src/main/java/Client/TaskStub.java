@@ -46,18 +46,13 @@ public class TaskStub implements Task {
                     c.sendAndReceive(new AddTasksReq(uid, uri))
             ).join().get();
         }catch (Exception e){
-            if(connect())
-                return this.addTask(uri);
-            else
-                return false;
+            connect();
+            return this.addTask(uri);
         }
 
         generateUUID();
         return result.result;
     }
-
-    @Override
-    public void setUncompleted(String uri) { }
 
     @Override
     public boolean completeTask(String uri, ArrayList<String> tasks) {
@@ -68,10 +63,8 @@ public class TaskStub implements Task {
             ).join().get();
         }catch (Exception e){
             e.printStackTrace();
-            if(connect())
-                return this.completeTask(uri, tasks);
-            else
-                return false;
+            connect();
+            return this.completeTask(uri, tasks);
         }
 
         generateUUID();
@@ -86,10 +79,8 @@ public class TaskStub implements Task {
                     c.sendAndReceive(new GetTaskReq(uid))
             ).join().get();
         }catch (Exception e){
-            if(connect())
-                return this.getTask();
-            else
-                return null;
+            connect();
+            return this.getTask();
         }
 
         generateUUID();
@@ -111,9 +102,8 @@ public class TaskStub implements Task {
                         c.sendAndReceive(new ClientUIDReq(uid, clientUID))
                 ).join().get();
 
-                c.onClose((s) -> {
-                    connect();
-                });
+                //c.onClose((s) -> connect() );
+
                 System.out.println("Connected to primary server");
                 return true;
             } catch (Exception e){
