@@ -28,8 +28,8 @@ public class TaskImpl implements Task{
 
     public boolean addTaskIndex(String uri, int index) {
         if (!tasks.contains(uri)){
-            if (index == tasks.size()) {
-                tasks.add(index, uri);
+            if (index >= tasks.size()) {
+                tasks.add(uri);
             } else {
                 tasks.set(index, uri);
             }
